@@ -193,14 +193,24 @@ export async function processSmsQueueOnce(): Promise<{
   return { processed, sent, failed, requeued };
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __smsWorkerStarted: boolean | undefined;
+}
+
 /**
  * Démarrage de la boucle d'arrière-plan toutes les 5 secondes
  */
 export function startSmsWorker(intervalMs = 5000): void {
-  if (workerInterval) return;
+  if (globalThis.__smsWorkerStarted || workerInterval) {
+    return;
+  }
+  globalThis.__smsWorkerStarted = true;
 
   // Premier passage immédiat
-  processSmsQueueOnce().catch(() => {});
+  processSmsQueueOnce().catch((err) => {
+    console.error("[SmsWorker] Erreur exécution initiale :", err);
+  });
 
   // Boucle récurrente
   workerInterval = setInterval(() => {
