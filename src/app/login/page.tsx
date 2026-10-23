@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShieldCheck, Lock, User, ArrowRight, Loader2, AlertCircle } from "lucide-react";
@@ -12,6 +12,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [schoolLogo, setSchoolLogo] = useState("/logo-transparent.png");
+  const [schoolName, setSchoolName] = useState("معهد الامتياز الخاص");
+
+  useEffect(() => {
+    fetch("/api/public-settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.school_logo) setSchoolLogo(data.school_logo);
+        if (data.school_name) setSchoolName(data.school_name);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,8 +83,11 @@ export default function LoginPage() {
             className="mb-3 flex items-center justify-center"
           >
             <img
-              src="/logo-transparent.png"
+              src={schoolLogo}
               alt="Logo Établissement"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "/logo-transparent.png";
+              }}
               className="h-28 sm:h-32 w-auto max-w-[200px] object-contain drop-shadow-sm hover:scale-105 transition-transform duration-300"
             />
           </motion.div>
@@ -81,7 +96,7 @@ export default function LoginPage() {
             Contrôle SMS
           </h1>
           <p className="text-base font-bold text-[#2B3F66] dark:text-indigo-400 mt-1 font-arabic">
-            معهد الامتياز الخاص
+            {schoolName}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Espace Direction &bull; Gestion Scolaire

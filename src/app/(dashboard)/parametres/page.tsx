@@ -62,6 +62,8 @@ export default function ParametresPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   // SMS Live Status
   const [smsStatus, setSmsStatus] = useState<any>(null);
@@ -417,23 +419,43 @@ export default function ParametresPage() {
 
               <div className="flex-1 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold hover:bg-indigo-100 cursor-pointer transition">
-                    <span>Téléverser un nouveau logo</span>
+                  <label className={`px-3.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition flex items-center gap-2 ${
+                    uploadingLogo
+                      ? "bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700 cursor-not-allowed"
+                      : "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100"
+                  }`}>
+                    {uploadingLogo && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{uploadingLogo ? "Téléversement..." : "Téléverser un nouveau logo"}</span>
                     <input
                       type="file"
-                      accept="image/png, image/jpeg, image/webp"
+                      disabled={uploadingLogo}
+                      accept="image/png, image/jpeg, image/webp, image/svg+xml"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = (ev) => {
+                        if (!file) return;
+                        setUploadingLogo(true);
+                        setLogoError(null);
+                        try {
+                          const formData = new FormData();
+                          formData.append("file", file);
+                          const res = await fetch("/api/uploads", {
+                            method: "POST",
+                            body: formData,
+                          });
+                          const data = await res.json();
+                          if (res.ok && data.url) {
                             setSettings((prev: any) => ({
                               ...prev,
-                              school_logo: ev.target?.result as string,
+                              school_logo: data.url,
                             }));
-                          };
-                          reader.readAsDataURL(file);
+                          } else {
+                            setLogoError(data.error || "Échec du téléversement");
+                          }
+                        } catch {
+                          setLogoError("Erreur de connexion au serveur");
+                        } finally {
+                          setUploadingLogo(false);
                         }
                       }}
                     />
@@ -450,8 +472,12 @@ export default function ParametresPage() {
                   )}
                 </div>
 
+                {logoError && (
+                  <p className="text-xs text-rose-500 font-medium">{logoError}</p>
+                )}
+
                 <p className="text-[11px] text-slate-400">
-                  Logo actif : <code>{settings.school_logo ? "Personnalisé (en mémoire)" : "/logo-transparent.png"}</code>.
+                  Logo actif : <code>{settings.school_logo || "/logo-transparent.png"}</code>.
                 </p>
               </div>
             </div>
