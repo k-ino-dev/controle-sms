@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Student {
+  id          String       @id @default(uuid())
+  firstName   String
+  lastName    String
+  parentPhone String
+  level       String       // 7ème, 8ème, 9ème, 1ère, 2ème, 3ème, Bac
+  section     String?      // Informatique, Sciences, Lettres (2ème, 3ème, Bac)
+  isArchived  Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  enrollments Enrollment[]
+  absences    Absence[]
+  payments    Payment[]
+  smsLogs     SmsQueue[]
+}
+
+model Class {
+  id        String       @id @default(uuid())
+  name      String       // ex: "1ère classe 1", "2ème Lettres classe 3"
+  level     String
+  section   String?
+  createdAt DateTime     @default(now())
+
+  enrollments Enrollment[]
+  sessions    AbsenceSession[]
+}
+
+model Enrollment {
+  id        String   @id @default(uuid())
+  studentId String
+  classId   String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, classId])
+}
+
+model AbsenceSession {
+  id             String    @id @default(uuid())
+  classId        String
+  idempotencyKey String    @unique
+  date           DateTime  @default(now())
+  recordedAtTime String    // "08:35"
+  class          Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  absences       Absence[]
+}
+
+model Absence {
+  id        String         @id @default(uuid())
+  sessionId String
+  studentId String
+  session   AbsenceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student   Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  smsSent   Boolean        @default(false)
+
+  @@unique([sessionId, studentId])
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  studentId String
+  month     String   // "octobre", "novembre", "décembre", "janvier", "février", "mars", "avril", "mai", "juin"
+  amount    Float
+  dueAmount Float
+  paidAt    DateTime @default(now())
+  notes     String?
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, month])
+}
+
+model SmsQueue {
+  id          String    @id @default(uuid())
+  studentId   String?
+  parentPhone String
+  message     String
+  partsCount  Int       @default(1)
+  type        String    // "absence" | "paiement - option 1" | "paiement - option 2" | "test"
+  status      String    @default("pending") // "pending" | "sent" | "failed"
+  failReason  String?
+  rawResponse String?
+  retryCount  Int       @default(0)
+  nextRetryAt DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  student     Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextRetryAt])
+  @@index([studentId, type, createdAt])
+}
+
+model SmsServiceStatus {
+  id             String   @id @default("singleton")
+  lastCheckedAt  DateTime @default(now())
+  balance        Float    @default(0)
+  lastSendStatus String?  // "success" | "error"
+  lastError      String?
+  updatedAt      DateTime @updatedAt
+}
+
+model LoginAttempt {
+  id          String    @id @default(uuid())
+  ip          String    @unique
+  attempts    Int       @default(0)
+  lockedUntil DateTime?
+  lastAttempt DateTime  @default(now())
+}
+

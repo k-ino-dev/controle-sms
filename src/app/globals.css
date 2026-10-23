@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #F8FAFC;
+    --foreground: #0F172A;
+    --card: #FFFFFF;
+    --card-foreground: #0F172A;
+    --card-border: #E2E8F0;
+    --muted: #F1F5F9;
+    --muted-foreground: #64748B;
+  }
+
+  .dark {
+    --background: #0B1020;
+    --foreground: #F8FAFC;
+    --card: rgba(17, 24, 39, 0.75);
+    --card-foreground: #F8FAFC;
+    --card-border: rgba(255, 255, 255, 0.08);
+    --muted: rgba(30, 41, 59, 0.6);
+    --muted-foreground: #94A3B8;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+}
+
+.dark .glass-card {
+  background: rgba(17, 24, 39, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* Arabic typography styling */
+.arabic-text {
+  font-family: var(--font-arabic), "Cairo", "Tajawal", sans-serif;
+  direction: rtl;
+  text-align: right;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+/* Ligne de découpe pour l'affichage écran et impression */
+.print-divider {
+  border-bottom: 2px dashed #7A2E3A;
+  margin: 1rem 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.print-divider::after {
+  content: "✂ Ligne de découpe (Exemplaire École / Exemplaire Parent)";
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #F1F5F9;
+  padding: 0 12px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7A2E3A;
+  border-radius: 9999px;
+}
+
+/* Impression optimisée pour le reçu de paiement A4 */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 6mm 8mm;
+  }
+
+  html, body {
+    background: white !important;
+    color: #0F172A !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Cacher tous les éléments d'interface */
+  nav,
+  aside,
+  header,
+  .no-print,
+  button,
+  .bottom-nav {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Forcer la modale à occuper la page blanche sans overlay */
+  .receipt-modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .receipt-modal-card {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    background: white !important;
+  }
+
+  .print-receipt-container {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 284mm !important;
+    max-height: 284mm !important;
+    justify-content: space-between !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-receipt-copy {
+    height: 136mm !important;
+    max-height: 136mm !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    overflow: hidden !important;
+  }
+
+  .print-divider {
+    border-bottom: 2px dashed #7A2E3A !important;
+    margin: 3mm 0 !important;
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .print-divider::after {
+    content: "✂ Ligne de découpe (Exemplaire École / Exemplaire Parent)";
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    padding: 0 12px;
+    font-size: 7pt;
+    font-weight: 700;
+    color: #7A2E3A;
+  }
+}
+

@@ -1,0 +1,26 @@
+{
+  "name": "Contrôle SMS - معهد الامتياز الخاص",
+  "short_name": "Contrôle SMS",
+  "description": "Application de gestion d'école privée et contrôle d'absence",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B1020",
+  "theme_color": "#2B3F66",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo-transparent.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}
