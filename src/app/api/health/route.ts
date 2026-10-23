@@ -18,7 +18,8 @@ export async function GET() {
     return NextResponse.json(
       {
         status: "unhealthy",
-        error: String(error),
+        database: "disconnected",
+        error: error instanceof Error ? error.message : "Erreur de connexion à la base de données",
       },
       { status: 503 }
     );

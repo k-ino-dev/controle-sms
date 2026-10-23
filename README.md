@@ -46,10 +46,13 @@ controle sms/
 ├── .env.example             # Exemple des variables d'environnement
 ├── .gitignore               # Exclusion des secrets, base .db, backups et build
 │
-├── backups/                 # Dossier des sauvegardes journalières de la base SQLite
+├── data/
+│   ├── db/                  # Volume persistant de la base SQLite (/app/data)
+│   ├── uploads/             # Volume persistant des logos et images (/app/data/uploads)
+│   └── backups/             # Volume persistant des sauvegardes (/app/data/backups)
 ├── scripts/
 │   ├── backup.sh            # Script de sauvegarde automatique avec rotation sur 30 jours
-│   └── worker.ts            # Script autonome de worker SMS
+│   └── restore.sh           # Script de restauration sécurisée avec snapshot préventif
 │
 ├── prisma/
 │   ├── schema.prisma        # Schéma SQLite (Élèves, Classes, Présence, Paiements, SMS, Paramètres)
@@ -170,16 +173,16 @@ Ajoutez la ligne suivante :
 
 ### 6. Restauration d'une Sauvegarde
 
-Pour restaurer une sauvegarde précédente de la base de données :
+Pour restaurer une sauvegarde précédente en toute sécurité (avec création automatique d'un snapshot préventif de l'état actuel) :
 ```bash
-# 1. Arrêter les conteneurs
-docker compose stop web
+# 1. Rendre le script exécutable
+chmod +x scripts/restore.sh
 
-# 2. Copier la sauvegarde souhaitée vers la base active
-cp backups/ecole_backup_YYYY-MM-DD_HH-MM-SS.db data/prisma/dev.db
+# 2. Exécuter la restauration
+./scripts/restore.sh data/backups/ecole_backup_YYYY-MM-DD_HH-MM-SS.db
 
-# 3. Redémarrer l'application
-docker compose start web
+# 3. Redémarrer le conteneur Next.js
+docker compose restart web
 ```
 
 ### 7. Configuration de WinSMS Tunisie
