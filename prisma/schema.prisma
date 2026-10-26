@@ -87,6 +87,7 @@ model Payment {
   month     String   // "octobre", "novembre", "décembre", "janvier", "février", "mars", "avril", "mai", "juin"
   amount    Float
   dueAmount Float
+  receiptNo String?  // "REC-2026-1001"
   paidAt    DateTime @default(now())
   notes     String?
   student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)

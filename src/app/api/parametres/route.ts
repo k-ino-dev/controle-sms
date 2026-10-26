@@ -44,6 +44,37 @@ export async function GET() {
       });
     }
 
+    let smsTemplatePaymentOpt1 =
+      settingsMap["sms_template_payment_opt1"] ||
+      settingsMap["sms_template_payment"] ||
+      DEFAULT_TEMPLATES.sms_template_payment_opt1;
+
+    let smsTemplatePaymentOpt2 =
+      settingsMap["sms_template_payment_opt2"] || DEFAULT_TEMPLATES.sms_template_payment_opt2;
+
+    const oldOpt1 =
+      "تذكير من معهد الامتياز: يرجى تسوية معلوم دراسة شهر [الشهر] الخاص بالتلميذ [الاسم واللقب] (المبلغ: [المبلغ] د.ت). شكراً لتفهمكم.";
+    const oldOpt2 =
+      "تنبيه هام من إدارة معهد الامتياز: نعلمكم أنه لم يتم تسوية معاليم دراسة التلميذ [الاسم واللقب] لشهر [الشهر]. يُرجى الاتصال بالإدارة فوراً تفادياً لتعليق الدروس.";
+
+    if (smsTemplatePaymentOpt1 === oldOpt1) {
+      smsTemplatePaymentOpt1 = DEFAULT_TEMPLATES.sms_template_payment_opt1;
+      await prisma.setting.upsert({
+        where: { key: "sms_template_payment_opt1" },
+        update: { value: smsTemplatePaymentOpt1 },
+        create: { key: "sms_template_payment_opt1", value: smsTemplatePaymentOpt1 },
+      });
+    }
+
+    if (smsTemplatePaymentOpt2 === oldOpt2) {
+      smsTemplatePaymentOpt2 = DEFAULT_TEMPLATES.sms_template_payment_opt2;
+      await prisma.setting.upsert({
+        where: { key: "sms_template_payment_opt2" },
+        update: { value: smsTemplatePaymentOpt2 },
+        create: { key: "sms_template_payment_opt2", value: smsTemplatePaymentOpt2 },
+      });
+    }
+
     return NextResponse.json({
       success: true,
       settings: {
@@ -54,12 +85,8 @@ export async function GET() {
         school_logo: settingsMap["school_logo"] || "",
         prices_by_level: pricesByLevel,
         sms_template_absence: smsTemplateAbsence,
-        sms_template_payment_opt1:
-          settingsMap["sms_template_payment_opt1"] ||
-          settingsMap["sms_template_payment"] ||
-          DEFAULT_TEMPLATES.sms_template_payment_opt1,
-        sms_template_payment_opt2:
-          settingsMap["sms_template_payment_opt2"] || DEFAULT_TEMPLATES.sms_template_payment_opt2,
+        sms_template_payment_opt1: smsTemplatePaymentOpt1,
+        sms_template_payment_opt2: smsTemplatePaymentOpt2,
         winsms_sender_id:
           settingsMap["winsms_sender_id"] || process.env.WINSMS_SENDER_ID || "ELIMTIAZ",
         winsms_api_key:

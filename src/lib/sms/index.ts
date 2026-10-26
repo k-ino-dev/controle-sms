@@ -151,8 +151,62 @@ export function formatTunisHourFloor(timeOrDate?: string | Date | null): string 
 }
 
 /**
+ * Mois de l'année scolaire en arabe tunisien
+ */
+export const ARABIC_MONTHS = [
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+  "جانفي",
+  "فيفري",
+  "مارس",
+  "أفريل",
+  "ماي",
+  "جوان",
+] as const;
+
+export const MONTHS_MAP: { fr: string; ar: string; label: string }[] = [
+  { fr: "octobre", ar: "أكتوبر", label: "Octobre" },
+  { fr: "novembre", ar: "نوفمبر", label: "Novembre" },
+  { fr: "décembre", ar: "ديسمبر", label: "Décembre" },
+  { fr: "janvier", ar: "جانفي", label: "Janvier" },
+  { fr: "février", ar: "فيفري", label: "Février" },
+  { fr: "mars", ar: "مارس", label: "Mars" },
+  { fr: "avril", ar: "أفريل", label: "Avril" },
+  { fr: "mai", ar: "ماي", label: "Mai" },
+  { fr: "juin", ar: "جوان", label: "Juin" },
+];
+
+export const FR_TO_AR_MONTH: Record<string, string> = {
+  octobre: "أكتوبر",
+  novembre: "نوفمبر",
+  décembre: "ديسمبر",
+  janvier: "جانفي",
+  février: "فيفري",
+  mars: "مارس",
+  avril: "أفريل",
+  mai: "ماي",
+  juin: "جوان",
+};
+
+/**
+ * Convertit tout nom de mois (français ou arabe) en son nom officiel arabe
+ */
+export function toArabicMonth(month?: string | null): string {
+  if (!month) return "أكتوبر";
+  const trimmed = month.trim();
+  const lower = trimmed.toLowerCase();
+  if (FR_TO_AR_MONTH[lower]) return FR_TO_AR_MONTH[lower];
+  for (const item of MONTHS_MAP) {
+    if (item.ar === trimmed || item.fr === lower) return item.ar;
+  }
+  return trimmed;
+}
+
+/**
  * Remplacement des variables dans un modèle de message arabe
  * Prend en charge [الاسم واللقب], [الساعة] (et legacy [HH:MM]), [الشهر], [المبلغ]
+ * N'ajoute AUCUN texte supplémentaire non présent dans le modèle.
  */
 export function formatSmsMessage(
   template: string,
@@ -179,7 +233,8 @@ export function formatSmsMessage(
   }
 
   if (variables.month) {
-    result = result.replaceAll("[الشهر]", variables.month);
+    const arabicMonth = toArabicMonth(variables.month);
+    result = result.replaceAll("[الشهر]", arabicMonth);
   }
 
   if (variables.amount !== undefined) {
@@ -188,4 +243,5 @@ export function formatSmsMessage(
 
   return result;
 }
+
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { normalizeTunisianPhone, calculateSmsSegments, formatSmsMessage } from "@/lib/sms";
+import { normalizeTunisianPhone, calculateSmsSegments, formatSmsMessage, toArabicMonth } from "@/lib/sms";
 import { DEFAULT_TEMPLATES } from "@/lib/sms/templates";
 
 export const dynamic = "force-dynamic";
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         : DEFAULT_TEMPLATES.sms_template_payment_opt2);
 
     const studentFullName = `${student.firstName} ${student.lastName}`;
-    const selectedMonth = month || "أكتوبر";
+    const selectedMonth = toArabicMonth(month);
     const dueAmount = amount !== undefined ? String(amount) : "105";
 
     const personalizedMsg = formatSmsMessage(template, {

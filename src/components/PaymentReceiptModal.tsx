@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Printer, X } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { formatDateTime } from "@/lib/utils";
 
 export interface ReceiptData {
@@ -22,82 +23,93 @@ export interface ReceiptData {
   schoolLogo: string;
 }
 
-// Composant d'un exemplaire individuel (Deux exemplaires strictement identiques)
-function ReceiptCopy({ data }: { data: ReceiptData }) {
+// Composant d'un exemplaire individuel du reçu (strictement identique pour l'École et le Parent)
+export function ReceiptCopy({
+  data,
+  isPrintVersion = false,
+}: {
+  data: ReceiptData;
+  isPrintVersion?: boolean;
+}) {
   const logoUrl = data.schoolLogo || "/logo-transparent.png";
 
   return (
-    <div className="print-receipt-copy relative bg-white text-slate-900 border-[3.5px] border-double border-[#2B3F66] rounded-2xl p-5 sm:p-6 flex flex-col justify-between overflow-hidden shadow-sm">
-      {/* Filigrane discret en arrière-plan (~5% d'opacité) */}
+    <div
+      className={`relative bg-white text-slate-900 overflow-hidden box-border select-none flex flex-col justify-between ${
+        isPrintVersion
+          ? "print-receipt-copy"
+          : "p-5 sm:p-6 border-[3px] border-double border-[#2B3F66] rounded-2xl shadow-sm min-h-[360px]"
+      }`}
+    >
+      {/* Filigrane discret centré (~5% d'opacité) */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none opacity-[0.05] z-0">
         <img
           src={logoUrl}
           alt=""
-          className="w-64 h-64 object-contain"
+          className={isPrintVersion ? "w-48 h-48 object-contain" : "w-56 h-56 object-contain"}
         />
       </div>
 
-      <div className="relative z-10 flex flex-col justify-between h-full">
+      <div className="relative z-10 flex flex-col justify-between h-full space-y-2.5">
         {/* EN-TÊTE : Logo + Noms Établissement (Arabe & Français) + Titre "REÇU DE PAIEMENT" & Numéro & Année */}
-        <div className="flex items-start justify-between gap-4 border-b border-[#2B3F66]/20 pb-2.5">
-          {/* Logo & Identité école */}
-          <div className="flex items-center gap-3.5">
+        <div className="flex items-start justify-between gap-3 border-b border-[#2B3F66]/20 pb-2">
+          {/* Logo & Identité établissement */}
+          <div className="flex items-center gap-3 min-w-0">
             <img
               src={logoUrl}
               alt="Logo Établissement"
-              className="h-16 w-auto max-w-[80px] object-contain shrink-0"
+              className="h-13 w-auto max-w-[65px] object-contain shrink-0"
+              style={{ maxHeight: "52px" }}
             />
-            <div className="flex flex-col">
-              <span className="font-arabic font-extrabold text-xl text-[#2B3F66] leading-tight">
+            <div className="flex flex-col min-w-0">
+              <span className="font-arabic font-extrabold text-base sm:text-lg text-[#2B3F66] leading-tight truncate">
                 {data.schoolName}
               </span>
-              <span className="font-serif italic font-semibold text-xs text-[#7A2E3A] tracking-wide mt-0.5">
+              <span className="font-serif italic font-semibold text-[11px] text-[#7A2E3A] tracking-wide mt-0.5 truncate">
                 {data.schoolNameFr}
               </span>
-              <span className="text-[11px] text-slate-500 font-medium mt-1">
+              <span className="text-[9.5px] text-slate-500 font-medium mt-0.5 truncate">
                 {data.schoolAddress} &bull; Tél : {data.schoolPhone}
               </span>
             </div>
           </div>
 
-          {/* Titre REÇU DE PAIEMENT + N° + Année Scolaire (Identique sur les deux exemplaires, aucun badge) */}
+          {/* Titre REÇU DE PAIEMENT + N° + Année Scolaire */}
           <div className="flex flex-col items-end text-right shrink-0">
-            <div className="font-serif font-black text-base text-[#2B3F66] tracking-tight">
+            <div className="font-serif font-black text-sm sm:text-base text-[#2B3F66] tracking-tight">
               REÇU DE PAIEMENT
             </div>
             <div className="text-xs font-mono font-bold text-[#7A2E3A] mt-0.5">
               N° {data.receiptNo}
             </div>
-            <div className="text-[10.5px] text-slate-500 font-semibold mt-0.5">
+            <div className="text-[10px] text-slate-500 font-semibold mt-0.5">
               Année Scolaire {data.academicYear}
             </div>
           </div>
         </div>
 
         {/* INFORMATIONS ÉLÈVE & SCOLARITÉ (4 CHAMPS DISTINCTS SANS AUCUNE PARENTHÈSE) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 border-b border-slate-200">
+        <div className="grid grid-cols-4 gap-2 py-2 border-b border-slate-200">
           <div>
-            <span className="text-[9.5px] uppercase font-bold tracking-wider text-[#7A2E3A] block">
+            <span className="text-[9px] uppercase font-bold tracking-wider text-[#7A2E3A] block">
               Élève
             </span>
-            <span className="font-bold text-sm text-slate-900 leading-tight block truncate">
+            <span className="font-bold text-xs sm:text-sm text-slate-900 leading-tight block truncate">
               {data.studentName}
             </span>
           </div>
 
-          {/* Niveau séparé, sans aucune parenthèse */}
           <div>
-            <span className="text-[9.5px] uppercase font-bold tracking-wider text-[#7A2E3A] block">
+            <span className="text-[9px] uppercase font-bold tracking-wider text-[#7A2E3A] block">
               Niveau
             </span>
-            <span className="font-bold text-xs text-slate-800 block">
+            <span className="font-bold text-xs text-slate-800 block truncate">
               {data.level}
             </span>
           </div>
 
-          {/* Classe séparée, sans aucune parenthèse */}
           <div>
-            <span className="text-[9.5px] uppercase font-bold tracking-wider text-[#7A2E3A] block">
+            <span className="text-[9px] uppercase font-bold tracking-wider text-[#7A2E3A] block">
               Classe
             </span>
             <span className="font-bold text-xs text-slate-800 block truncate">
@@ -106,49 +118,49 @@ function ReceiptCopy({ data }: { data: ReceiptData }) {
           </div>
 
           <div>
-            <span className="text-[9.5px] uppercase font-bold tracking-wider text-[#7A2E3A] block">
+            <span className="text-[9px] uppercase font-bold tracking-wider text-[#7A2E3A] block">
               Mois Concerné
             </span>
-            <span className="font-bold text-xs text-slate-900 capitalize block">
+            <span className="font-bold text-xs text-slate-900 capitalize block truncate">
               {data.month}
             </span>
           </div>
         </div>
 
-        {/* MONTANT VERSÉ MIS EN VALEUR (AÉRÉ, GRANDES DIMENSIONS, UNIQUEMENT LE MONTANT EFFECTIF) */}
-        <div className="my-2 p-4 rounded-xl bg-[#F8FAFC] border border-[#2B3F66]/25 flex items-center justify-between">
-          <div className="flex items-baseline gap-3">
-            <span className="text-xs uppercase font-extrabold tracking-wider text-[#2B3F66]">
+        {/* MONTANT VERSÉ MIS EN VALEUR (AÉRÉ, UNIQUEMENT LE MONTANT EFFECTIF) */}
+        <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#2B3F66]/20 flex items-center justify-between">
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-[11px] uppercase font-extrabold tracking-wider text-[#2B3F66]">
               Montant versé :
             </span>
-            <span className="text-3xl font-black font-mono text-[#2E7D5B] tracking-tight">
+            <span className="text-2xl sm:text-3xl font-black font-mono text-[#2E7D5B] tracking-tight">
               {data.amountPaid} DT
             </span>
           </div>
 
           {/* Mode de règlement & Date et heure exacte */}
-          <div className="flex flex-col items-end text-right gap-1 text-xs text-slate-600">
+          <div className="flex flex-col items-end text-right gap-0.5 text-[11px] text-slate-600">
             <div>
-              Mode de règlement : <strong className="font-bold text-slate-900">{data.paymentMethod}</strong>
+              Mode : <strong className="font-bold text-slate-900">{data.paymentMethod}</strong>
             </div>
-            <div className="text-[11px] text-slate-500">
-              Date et heure : <strong className="text-slate-800 font-semibold">{formatDateTime(data.date)}</strong>
+            <div className="text-[10px] text-slate-500">
+              Date : <strong className="text-slate-800 font-semibold">{formatDateTime(data.date)}</strong>
             </div>
           </div>
         </div>
 
-        {/* ZONES SIGNATURE & CACHET (ESPACÉES ET AÉRÉES POUR APPLICATION PROPRE DU TAMPON) */}
-        <div className="pt-3 flex items-start justify-between gap-8 border-t border-[#2B3F66]/20">
+        {/* ZONES SIGNATURE & CACHET */}
+        <div className="pt-2 flex items-start justify-between gap-6 border-t border-[#2B3F66]/20">
           {/* Emplacement Signature de l'administration */}
           <div className="flex-1 flex flex-col justify-between text-xs text-slate-700">
-            <span className="font-bold text-slate-800">Signature de l'administration</span>
-            <div className="h-16 w-full border-b border-slate-300 mt-2" />
+            <span className="font-bold text-slate-800 text-[11px]">Signature de l'administration</span>
+            <div className="h-10 sm:h-12 w-full border-b border-slate-300 mt-1" />
           </div>
 
           {/* Emplacement réservé pour le Cachet */}
           <div className="flex flex-col items-center justify-between text-xs text-slate-700">
-            <span className="font-bold text-slate-800 mb-1">Cachet de l'établissement</span>
-            <div className="h-16 w-44 border-2 border-dashed border-[#2B3F66]/30 rounded-xl flex items-center justify-center text-[10px] text-slate-400 bg-slate-50/50">
+            <span className="font-bold text-slate-800 text-[11px] mb-0.5">Cachet de l'établissement</span>
+            <div className="h-10 sm:h-12 w-36 sm:w-40 border-2 border-dashed border-[#2B3F66]/30 rounded-xl flex items-center justify-center text-[9.5px] text-slate-400 bg-slate-50/50">
               (Emplacement Cachet)
             </div>
           </div>
@@ -158,7 +170,7 @@ function ReceiptCopy({ data }: { data: ReceiptData }) {
   );
 }
 
-// Modale complète avec barre d'outils et affichage des 2 exemplaires A4
+// Composant de la modale avec aperçu écran + portail dédié pour impression A4
 export function PaymentReceiptModal({
   receiptData,
   onClose,
@@ -166,66 +178,111 @@ export function PaymentReceiptModal({
   receiptData: ReceiptData | null;
   onClose: () => void;
 }) {
-  if (!receiptData) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handlePrint = () => {
     window.print();
   };
 
   return (
-    <div className="receipt-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        className="receipt-modal-card w-full max-w-3xl bg-slate-100 rounded-3xl p-4 sm:p-6 shadow-2xl relative my-auto"
-      >
-        {/* BARRE D'OUTILS DE LA MODALE (Masquée à l'impression) */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-300 no-print mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-[#2B3F66] text-white flex items-center justify-center shadow-sm">
-              <Printer className="w-5 h-5" />
+    <>
+      {/* 1. CONTENEUR D'IMPRESSION DÉDIÉ MONTÉ DIRECTEMENT DANS BODY VIA PORTAL */}
+      {mounted &&
+        receiptData &&
+        createPortal(
+          <div id="print-root">
+            <div className="print-receipt-sheet">
+              {/* 1er Exemplaire (Haut de page) */}
+              <ReceiptCopy data={receiptData} isPrintVersion={true} />
+
+              {/* LIGNE DE DÉCOUPE AVEC CISEAUX AU MILIEU */}
+              <div className="print-divider">
+                <span className="print-divider-text">
+                  ✂ Ligne de découpe (Exemplaire École / Exemplaire Parent)
+                </span>
+              </div>
+
+              {/* 2ème Exemplaire (Bas de page, strictement identique) */}
+              <ReceiptCopy data={receiptData} isPrintVersion={true} />
             </div>
-            <div>
-              <h3 className="font-bold text-base text-slate-900 leading-tight">
-                Reçu de paiement prêt à l'impression
-              </h3>
-              <p className="text-xs text-slate-500">
-                Format A4 portrait &bull; 2 exemplaires identiques (École et Parent)
-              </p>
-            </div>
-          </div>
+          </div>,
+          document.body
+        )}
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="px-5 py-2.5 rounded-xl bg-[#2B3F66] hover:bg-[#1E2D4A] text-white text-xs font-bold shadow-md flex items-center gap-2 cursor-pointer transition transform active:scale-95"
+      {/* 2. MODALE D'APERÇU À L'ÉCRAN (Accessible et responsive) */}
+      <AnimatePresence>
+        {receiptData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="w-full max-w-3xl bg-slate-100 dark:bg-slate-900 rounded-3xl p-4 sm:p-6 shadow-2xl relative my-auto max-h-[92vh] flex flex-col"
             >
-              <Printer className="w-4 h-4" />
-              <span>Imprimer (A4)</span>
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition"
-              title="Fermer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+              {/* BARRE D'OUTILS DE LA MODALE */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-300 dark:border-slate-800 shrink-0 mb-4">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-[#2B3F66] text-white flex items-center justify-center shadow-sm shrink-0">
+                    <Printer className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-base text-slate-900 dark:text-white leading-tight truncate">
+                      Reçu de paiement prêt à l'impression
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                      Format A4 portrait &bull; 2 exemplaires identiques &bull; N° {receiptData.receiptNo}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="px-5 py-2.5 rounded-2xl bg-[#2B3F66] hover:bg-[#1E2D4A] text-white text-xs font-bold shadow-md flex items-center gap-2 cursor-pointer transition transform active:scale-95"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Imprimer (A4)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="p-2.5 rounded-2xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+                    title="Fermer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* APERÇU FIDÈLE DU REÇU À L'ÉCRAN DÉFILABLE */}
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                {/* 1er Exemplaire */}
+                <ReceiptCopy data={receiptData} />
+
+                {/* Ligne de découpe visible sur l'aperçu */}
+                <div className="flex items-center justify-center my-3 relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-b-2 border-dashed border-[#7A2E3A]/40" />
+                  </div>
+                  <span className="relative bg-slate-100 dark:bg-slate-900 px-4 text-xs font-bold text-[#7A2E3A] rounded-full">
+                    ✂ Ligne de découpe (Exemplaire École / Exemplaire Parent)
+                  </span>
+                </div>
+
+                {/* 2ème Exemplaire */}
+                <ReceiptCopy data={receiptData} />
+              </div>
+            </motion.div>
           </div>
-        </div>
-
-        {/* CONTENEUR IMPRIMABLE CONTENANT LES DEUX EXEMPLAIRES SÉPARÉS PAR POINTILLÉS */}
-        <div className="print-receipt-container space-y-4">
-          {/* 1er Exemplaire */}
-          <ReceiptCopy data={receiptData} />
-
-          {/* LIGNE DE DÉCOUPE AVEC CISEAUX AU MILIEU */}
-          <div className="print-divider" />
-
-          {/* 2ème Exemplaire (Strictement identique) */}
-          <ReceiptCopy data={receiptData} />
-        </div>
-      </motion.div>
-    </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
+
+export default PaymentReceiptModal;

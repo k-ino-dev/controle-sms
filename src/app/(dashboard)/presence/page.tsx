@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   UserCheck,
   UserX,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getCurrentTimeHHMM } from "@/lib/utils";
+import { TouchSelect } from "@/components/TouchSelect";
 
 export default function PresencePage() {
   const [classes, setClasses] = useState<any[]>([]);
@@ -150,6 +151,26 @@ export default function PresencePage() {
   const absentCount = absentIds.size;
   const currentSelectedClass = classes.find((c) => c.id === selectedClassId);
 
+  const validateButtonRef = useRef<HTMLButtonElement>(null);
+
+  const handleFloatingPillClick = () => {
+    validateButtonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => {
+      const confirmed = window.confirm(
+        `Valider le contrôle : ${absentCount} absent(s), ${absentCount} SMS seront envoyés ?`
+      );
+      if (confirmed) {
+        handleSubmitAttendance();
+      }
+    }, 400);
+  };
+
+  const classOptions = classes.map((cls) => ({
+    value: cls.id,
+    label: cls.name,
+    badge: `${cls.enrollments?.length || 0} élève${(cls.enrollments?.length || 0) > 1 ? "s" : ""}`,
+  }));
+
   return (
     <div className="space-y-6">
       {/* En-tête de la page */}
@@ -173,33 +194,26 @@ export default function PresencePage() {
         </div>
       </div>
 
-      {/* Sélection de la classe */}
+      {/* Sélection de la classe via TouchSelect personnalisé */}
       <div className="p-4 rounded-3xl glass-card flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
-            <School className="w-5 h-5" />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Choisir la classe :
-            </label>
-            <select
-              disabled={submitting}
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="mt-0.5 text-base sm:text-lg font-bold text-slate-900 dark:text-white bg-transparent border-none focus:outline-none cursor-pointer"
-            >
-              {classes.map((cls) => (
-                <option key={cls.id} value={cls.id} className="text-sm text-slate-800">
-                  {cls.name} ({cls.enrollments?.length || 0} élèves)
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex-1 min-w-0">
+          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+            Choisir la classe :
+          </label>
+          <TouchSelect
+            title="Choisir la classe"
+            value={selectedClassId}
+            onChange={setSelectedClassId}
+            disabled={submitting}
+            options={classOptions}
+            placeholder="Sélectionner une classe..."
+            icon={<School className="w-5 h-5 text-indigo-500" />}
+            buttonClassName="font-bold border-slate-200 dark:border-slate-700"
+          />
         </div>
 
         {/* Compteur interactif en direct */}
-        <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/60 p-2 sm:px-4 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
+        <div className="flex items-center justify-center gap-3 bg-slate-50 dark:bg-slate-800/60 p-3 sm:px-4 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 shrink-0 self-stretch sm:self-auto">
           <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
             <span>{presentCount} Présent(s)</span>
@@ -335,14 +349,15 @@ export default function PresencePage() {
             })}
           </div>
 
-          {/* Bouton Enregistrer le contrôle (Double-clic protégé) */}
-          <div className="sticky bottom-20 md:bottom-6 z-30 pt-4">
+          {/* Bouton Valider le contrôle en fin de liste (flux normal, ne masque aucun élève) */}
+          <div className="pt-6 pb-28 md:pb-12">
             <motion.button
+              ref={validateButtonRef}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               onClick={handleSubmitAttendance}
               disabled={submitting || students.length === 0 || !!successResult}
-              className={`w-full py-4 px-6 rounded-3xl font-bold text-base shadow-2xl flex items-center justify-center gap-3 transition-all cursor-pointer ${
+              className={`w-full py-4 px-6 rounded-3xl font-bold text-base shadow-xl flex items-center justify-center gap-3 transition-all cursor-pointer ${
                 successResult
                   ? "bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
                   : absentCount > 0
@@ -370,6 +385,28 @@ export default function PresencePage() {
               )}
             </motion.button>
           </div>
+
+          {/* Pastille flottante compacte en bas à droite sur mobile (ne masque aucun élève grâce au padding en fin de liste) */}
+          {!successResult && students.length > 0 && (
+            <motion.button
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              whileTap={{ scale: 0.94 }}
+              onClick={handleFloatingPillClick}
+              disabled={submitting}
+              className={`fixed bottom-24 right-4 z-40 md:hidden flex items-center gap-2 px-4 py-2.5 rounded-full shadow-2xl font-extrabold text-xs text-white border border-white/25 transition-all cursor-pointer ${
+                absentCount > 0
+                  ? "bg-rose-600 hover:bg-rose-500 shadow-rose-500/40 ring-4 ring-rose-500/20"
+                  : "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/40 ring-4 ring-emerald-500/20"
+              }`}
+              title="Valider le contrôle"
+            >
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>
+                {absentCount === 0 ? "0 absent" : `${absentCount} absent${absentCount > 1 ? "s" : ""}`}
+              </span>
+            </motion.button>
+          )}
         </div>
       )}
     </div>

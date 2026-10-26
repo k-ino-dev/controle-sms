@@ -71,7 +71,18 @@ export async function GET(req: NextRequest) {
       const annualTotal = monthlyTarif * 9;
 
       let totalPaid = 0;
-      const monthsStatus: Record<string, { status: "paid" | "partial" | "unpaid"; paidAmount: number; dueAmount: number; date?: Date; notes?: string | null; paymentId?: string }> = {};
+      const monthsStatus: Record<
+        string,
+        {
+          status: "paid" | "partial" | "unpaid";
+          paidAmount: number;
+          dueAmount: number;
+          date?: Date;
+          notes?: string | null;
+          paymentId?: string;
+          receiptNo?: string | null;
+        }
+      > = {};
 
       schoolMonths.forEach((m) => {
         const p = s.payments.find((pm) => pm.month === m);
@@ -80,6 +91,7 @@ export async function GET(req: NextRequest) {
             status: "unpaid",
             paidAmount: 0,
             dueAmount: monthlyTarif,
+            receiptNo: null,
           };
         } else if (p.amount >= monthlyTarif) {
           totalPaid += p.amount;
@@ -90,6 +102,7 @@ export async function GET(req: NextRequest) {
             date: p.paidAt,
             notes: p.notes,
             paymentId: p.id,
+            receiptNo: p.receiptNo,
           };
         } else {
           totalPaid += p.amount;
@@ -100,6 +113,7 @@ export async function GET(req: NextRequest) {
             date: p.paidAt,
             notes: p.notes,
             paymentId: p.id,
+            receiptNo: p.receiptNo,
           };
         }
       });
@@ -172,6 +186,45 @@ export async function POST(req: NextRequest) {
     const tarifs = tarifsSetting ? JSON.parse(tarifsSetting.value) : defaultTarifs;
     const dueAmount = tarifs[student.level] || 100;
 
+    // Vérifier si un paiement existe déjà pour cet élève et ce mois
+    const existingPayment = await prisma.payment.findUnique({
+      where: {
+        studentId_month: {
+          studentId,
+          month,
+        },
+      },
+    });
+
+    let receiptNo = existingPayment?.receiptNo;
+
+    // Si pas encore de reçu, générer un numéro séquentiel unique qui ne changera jamais
+    if (!receiptNo) {
+      const counterSetting = await prisma.setting.findUnique({
+        where: { key: "receipt_counter" },
+      });
+      let nextSeq = 1001;
+      if (counterSetting) {
+        nextSeq = parseInt(counterSetting.value, 10) + 1;
+      } else {
+        const count = await prisma.payment.count({ where: { receiptNo: { not: null } } });
+        nextSeq = 1000 + count + 1;
+      }
+
+      await prisma.setting.upsert({
+        where: { key: "receipt_counter" },
+        update: { value: String(nextSeq) },
+        create: { key: "receipt_counter", value: String(nextSeq) },
+      });
+
+      const academicYearSetting = await prisma.setting.findUnique({
+        where: { key: "academic_year" },
+      });
+      const academicYear = academicYearSetting?.value || "2026-2027";
+      const yearPrefix = academicYear.split("-")[0] || new Date().getFullYear();
+      receiptNo = `REC-${yearPrefix}-${String(nextSeq).padStart(4, "0")}`;
+    }
+
     const payment = await prisma.payment.upsert({
       where: {
         studentId_month: {
@@ -182,14 +235,16 @@ export async function POST(req: NextRequest) {
       update: {
         amount,
         dueAmount,
+        receiptNo,
         notes: notes || null,
-        paidAt: new Date(),
+        paidAt: existingPayment?.paidAt || new Date(),
       },
       create: {
         studentId,
         month,
         amount,
         dueAmount,
+        receiptNo,
         notes: notes || null,
         paidAt: new Date(),
       },

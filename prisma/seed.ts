@@ -50,13 +50,12 @@ async function main() {
     },
     {
       key: "sms_template_payment_opt1",
-      value:
-        "تذكير من معهد الامتياز: يرجى تسوية معلوم دراسة شهر [الشهر] الخاص بالتلميذ [الاسم واللقب] (المبلغ: [المبلغ] د.ت). شكراً لتفهمكم.",
+      value: "تعلم إدارة معهد الامتياز أن التلميذ [الاسم واللقب] لم يخلص معلوم الدراسة",
     },
     {
       key: "sms_template_payment_opt2",
       value:
-        "تنبيه هام من إدارة معهد الامتياز: نعلمكم أنه لم يتم تسوية معاليم دراسة التلميذ [الاسم واللقب] لشهر [الشهر]. يُرجى الاتصال بالإدارة فوراً تفادياً لتعليق الدروس.",
+        "تعلم إدارة معهد الامتياز أن التلميذ [الاسم واللقب] لم يخلص معلوم الدراسة وسيتم إقصاؤه وفسخ اسمه من قائمة التلاميذ في صورة عدم الخلاص",
     },
     {
       key: "winsms_sender_id",
@@ -215,18 +214,26 @@ async function main() {
         where: { studentId_month: { studentId: student.id, month: "octobre" } },
       });
       if (!existingPayment) {
+        const seq = 1000 + i + 1;
         await prisma.payment.create({
           data: {
             studentId: student.id,
             month: "octobre",
             amount: amountOct,
             dueAmount: due,
+            receiptNo: `REC-2026-${String(seq).padStart(4, "0")}`,
             notes: amountOct < due ? "Acompte de 50%" : "Payé en totalité",
           },
         });
       }
     }
   }
+
+  await prisma.setting.upsert({
+    where: { key: "receipt_counter" },
+    update: {},
+    create: { key: "receipt_counter", value: "1025" },
+  });
 
   console.log("✅ Seed terminé avec succès !");
 }

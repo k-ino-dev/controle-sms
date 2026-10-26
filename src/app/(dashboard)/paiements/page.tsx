@@ -20,6 +20,7 @@ import { formatCurrency, formatDate, numberToFrenchWords } from "@/lib/utils";
 import { schoolMonths } from "@/lib/validation";
 import { PaymentReceiptModal, ReceiptData } from "@/components/PaymentReceiptModal";
 import { PaymentSmsModal } from "@/components/PaymentSmsModal";
+import { TouchSelect } from "@/components/TouchSelect";
 
 const monthLabelsShort: Record<string, string> = {
   octobre: "Oct",
@@ -58,6 +59,7 @@ export default function PaiementsPage() {
 
   // Modale d'impression de Reçu A4 (2 exemplaires conformes)
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [paymentJustSaved, setPaymentJustSaved] = useState<ReceiptData | null>(null);
 
   // Modale d'envoi SMS de paiement (2 options au choix)
   const [smsModalOpen, setSmsModalOpen] = useState(false);
@@ -135,6 +137,7 @@ export default function PaiementsPage() {
   const openPaymentModal = (student: any, month: string) => {
     setSelectedStudent(student);
     setSelectedMonth(month);
+    setPaymentJustSaved(null);
     const monthData = student.months[month];
     const due = monthData?.dueAmount || student.monthlyTarif || 100;
     // Si déjà payé ou acompte, initialiser avec le reste ou montant plein
@@ -198,16 +201,6 @@ export default function PaiementsPage() {
         }
 
         const newAmount = Number(inputAmount);
-        const monthlyTarif = selectedStudent.monthlyTarif || 100;
-        const previousMonthPaid = selectedStudent.months[selectedMonth]?.paidAmount || 0;
-        const monthTotalPaid = previousMonthPaid + newAmount;
-        const monthRemaining = Math.max(0, monthlyTarif - monthTotalPaid);
-        const isMonthFullyPaid = monthRemaining === 0;
-
-        const currentTotalPaid = selectedStudent.totalPaid || 0;
-        const newTotalPaid = currentTotalPaid + newAmount;
-        const annualTotal = selectedStudent.annualTotal || monthlyTarif * 9;
-        const annualRemaining = Math.max(0, annualTotal - newTotalPaid);
 
         // Formatage Niveau et Classe SANS AUCUNE PARENTHÈSE
         const levelFormatted = selectedStudent.section
@@ -217,10 +210,10 @@ export default function PaiementsPage() {
 
         const academicYear = schoolSettings?.academic_year || "2026-2027";
         const yearPrefix = academicYear.split("-")[0] || new Date().getFullYear();
-        const randSeq = String(Math.floor(1000 + Math.random() * 9000));
-        const receiptNo = `REC-${yearPrefix}-${randSeq}`;
+        // Numéro de reçu séquentiel unique retourné par la base de données
+        const receiptNo = data.payment?.receiptNo || `REC-${yearPrefix}-1001`;
 
-        setReceiptData({
+        const savedReceipt: ReceiptData = {
           receiptNo,
           academicYear,
           studentName: `${selectedStudent.lastName} ${selectedStudent.firstName}`,
@@ -229,15 +222,15 @@ export default function PaiementsPage() {
           month: selectedMonth,
           amountPaid: newAmount,
           paymentMethod,
-          date: new Date(),
+          date: data.payment?.paidAt ? new Date(data.payment.paidAt) : new Date(),
           schoolName: schoolSettings?.school_name || "معهد الامتياز الخاص",
           schoolNameFr: schoolSettings?.school_name_fr || "Institut Privé d'Excellence",
           schoolPhone: schoolSettings?.school_phone || "+216 71 888 999",
           schoolAddress: schoolSettings?.school_address || "Avenue Habib Bourguiba, Tunis",
           schoolLogo: schoolSettings?.school_logo || "/logo-transparent.png",
-        });
+        };
 
-        setPaymentModalOpen(false);
+        setPaymentJustSaved(savedReceipt);
         fetchPayments();
       }
     } catch (err) {
@@ -265,8 +258,12 @@ export default function PaiementsPage() {
 
     const academicYear = schoolSettings?.academic_year || "2026-2027";
     const yearPrefix = academicYear.split("-")[0] || new Date().getFullYear();
-    const randSeq = String(Math.floor(1000 + Math.random() * 9000));
-    const receiptNo = `REC-${yearPrefix}-${randSeq}`;
+    // Le numéro de reçu existant est récupéré de la base et NE CHANGE JAMAIS
+    const receiptNo =
+      monthInfo.receiptNo ||
+      (monthInfo.paymentId
+        ? `REC-${yearPrefix}-${monthInfo.paymentId.substring(0, 4).toUpperCase()}`
+        : `REC-${yearPrefix}-1001`);
 
     setReceiptData({
       receiptNo,
@@ -356,18 +353,22 @@ export default function PaiementsPage() {
           />
         </div>
 
-        <select
-          value={selectedClassId}
-          onChange={(e) => setSelectedClassId(e.target.value)}
-          className="w-full md:w-48 py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-sm"
-        >
-          <option value="">Toutes les classes</option>
-          {classes.map((cls) => (
-            <option key={cls.id} value={cls.id}>
-              {cls.name}
-            </option>
-          ))}
-        </select>
+        <div className="w-full md:w-56">
+          <TouchSelect
+            title="Filtrer par classe"
+            value={selectedClassId}
+            onChange={setSelectedClassId}
+            placeholder="Toutes les classes"
+            options={[
+              { value: "", label: "Toutes les classes" },
+              ...classes.map((cls) => ({
+                value: cls.id,
+                label: cls.name,
+                badge: `${cls.enrollments?.length || 0} élève${(cls.enrollments?.length || 0) > 1 ? "s" : ""}`,
+              })),
+            ]}
+          />
+        </div>
       </div>
 
       {/* Table / Grille des Paiements */}
@@ -496,116 +497,164 @@ export default function PaiementsPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSavePayment} className="space-y-4">
-                <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 flex justify-between items-center text-xs">
-                  <div>
-                    <span className="text-slate-400 block">Tarif officiel pour ce niveau :</span>
-                    <span className="font-bold text-sm text-indigo-700 dark:text-indigo-300">
-                      {formatCurrency(selectedStudent.monthlyTarif)} / mois
-                    </span>
+              {paymentJustSaved ? (
+                <div className="py-4 space-y-5 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-sm">
+                    <CheckCircle2 className="w-8 h-8" />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setInputAmount(selectedStudent.monthlyTarif)}
-                    className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-semibold text-[11px]"
-                  >
-                    Montant total
-                  </button>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Montant versé (DT) :
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="5"
-                    required
-                    value={inputAmount}
-                    onChange={(e) => setInputAmount(Number(e.target.value))}
-                    className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-lg font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                  />
-                  {inputAmount < selectedStudent.monthlyTarif && (
-                    <p className="text-xs text-amber-600 mt-1">
-                      Paiement partiel : Reste à payer pour ce mois ={" "}
-                      <strong>{selectedStudent.monthlyTarif - inputAmount} DT</strong>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                      Paiement enregistré avec succès !
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {selectedStudent.lastName} {selectedStudent.firstName} &bull; Mois : {selectedMonth}
                     </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Mode de règlement :
-                  </label>
-                  <div className="grid grid-cols-3 gap-2 mb-2">
-                    {(["Espèces", "Chèque", "Virement"] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setPaymentMethod(mode)}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border cursor-pointer ${
-                          paymentMethod === mode
-                            ? "bg-[#2B3F66] text-white border-[#2B3F66] shadow-sm"
-                            : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
-                        }`}
-                      >
-                        <span>{mode}</span>
-                      </button>
-                    ))}
+                    <div className="mt-2 text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+                      {paymentJustSaved.amountPaid} DT
+                    </div>
+                    <div className="mt-2 inline-block px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-mono font-bold text-[#7A2E3A]">
+                      N° de reçu : {paymentJustSaved.receiptNo}
+                    </div>
                   </div>
 
-                  <input
-                    type="text"
-                    value={inputNotes}
-                    onChange={(e) => setInputNotes(e.target.value)}
-                    placeholder={
-                      paymentMethod === "Chèque"
-                        ? "N° de chèque, Banque émettrice..."
-                        : paymentMethod === "Virement"
-                        ? "Référence bancaire de virement..."
-                        : "Observations éventuelles..."
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
-                  />
+                  <div className="flex items-center justify-center gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReceiptData(paymentJustSaved);
+                        setPaymentModalOpen(false);
+                        setPaymentJustSaved(null);
+                      }}
+                      className="flex-1 py-3 px-4 rounded-2xl bg-[#2B3F66] hover:bg-[#1E2D4A] text-white text-xs font-bold shadow-md flex items-center justify-center gap-2 cursor-pointer transition transform active:scale-95"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Imprimer le reçu</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentModalOpen(false);
+                        setPaymentJustSaved(null);
+                      }}
+                      className="py-3 px-5 rounded-2xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      Fermer
+                    </button>
+                  </div>
                 </div>
+              ) : (
+                <form onSubmit={handleSavePayment} className="space-y-4">
+                  <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 flex justify-between items-center text-xs">
+                    <div>
+                      <span className="text-slate-400 block">Tarif officiel pour ce niveau :</span>
+                      <span className="font-bold text-sm text-indigo-700 dark:text-indigo-300">
+                        {formatCurrency(selectedStudent.monthlyTarif)} / mois
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInputAmount(selectedStudent.monthlyTarif)}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-semibold text-[11px]"
+                    >
+                      Montant total
+                    </button>
+                  </div>
 
-                <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
                   <div>
-                    {selectedStudent.months[selectedMonth]?.status !== "unpaid" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleViewExistingReceipt(selectedStudent, selectedMonth);
-                          setPaymentModalOpen(false);
-                        }}
-                        className="px-3.5 py-2 rounded-xl bg-[#2B3F66]/10 hover:bg-[#2B3F66]/20 text-[#2B3F66] dark:text-indigo-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>Voir / Imprimer le reçu</span>
-                      </button>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Montant versé (DT) :
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="5"
+                      required
+                      value={inputAmount}
+                      onChange={(e) => setInputAmount(Number(e.target.value))}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-lg font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                    />
+                    {inputAmount < selectedStudent.monthlyTarif && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Paiement partiel : Reste à payer pour ce mois ={" "}
+                        <strong>{selectedStudent.monthlyTarif - inputAmount} DT</strong>
+                      </p>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentModalOpen(false)}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300"
-                    >
-                      Annuler
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={savingPayment}
-                      className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-colored-success flex items-center gap-1.5 cursor-pointer"
-                    >
-                      {savingPayment && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                      <span>Valider & Générer le reçu</span>
-                    </button>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Mode de règlement :
+                    </label>
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      {(["Espèces", "Chèque", "Virement"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setPaymentMethod(mode)}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border cursor-pointer ${
+                            paymentMethod === mode
+                              ? "bg-[#2B3F66] text-white border-[#2B3F66] shadow-sm"
+                              : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                          }`}
+                        >
+                          <span>{mode}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={inputNotes}
+                      onChange={(e) => setInputNotes(e.target.value)}
+                      placeholder={
+                        paymentMethod === "Chèque"
+                          ? "N° de chèque, Banque émettrice..."
+                          : paymentMethod === "Virement"
+                          ? "Référence bancaire de virement..."
+                          : "Observations éventuelles..."
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+                    />
                   </div>
-                </div>
-              </form>
+
+                  <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                    <div>
+                      {selectedStudent.months[selectedMonth]?.status !== "unpaid" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleViewExistingReceipt(selectedStudent, selectedMonth);
+                            setPaymentModalOpen(false);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-[#2B3F66]/10 hover:bg-[#2B3F66]/20 text-[#2B3F66] dark:text-indigo-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>Voir / Imprimer le reçu</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentModalOpen(false)}
+                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingPayment}
+                        className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-colored-success flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {savingPayment && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        <span>Valider & Enregistrer</span>
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}

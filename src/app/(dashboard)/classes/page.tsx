@@ -15,6 +15,7 @@ import {
   GraduationCap,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import TouchSelect from "@/components/TouchSelect";
 
 const levels = ["7ème", "8ème", "9ème", "1ère", "2ème", "3ème", "Bac"];
 const sections = ["Informatique", "Sciences", "Lettres"];
@@ -324,22 +325,17 @@ export default function ClassesPage() {
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Niveau
                   </label>
-                  <select
+                  <TouchSelect
+                    title="Choisir le niveau"
                     value={formLevel}
-                    onChange={(e) => {
-                      setFormLevel(e.target.value);
-                      if (!["2ème", "3ème", "Bac"].includes(e.target.value)) {
+                    onChange={(val) => {
+                      setFormLevel(val);
+                      if (!["2ème", "3ème", "Bac"].includes(val)) {
                         setFormSection("");
                       }
                     }}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
-                  >
-                    {levels.map((lvl) => (
-                      <option key={lvl} value={lvl}>
-                        {lvl}
-                      </option>
-                    ))}
-                  </select>
+                    options={levels.map((lvl) => ({ value: lvl, label: lvl }))}
+                  />
                 </div>
 
                 <AnimatePresence>
@@ -352,19 +348,16 @@ export default function ClassesPage() {
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Section
                       </label>
-                      <select
-                        required
+                      <TouchSelect
+                        title="Sélectionner une section"
                         value={formSection}
-                        onChange={(e) => setFormSection(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
-                      >
-                        <option value="">Sélectionner une section...</option>
-                        {sections.map((sec) => (
-                          <option key={sec} value={sec}>
-                            {sec}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => setFormSection(val)}
+                        placeholder="Sélectionner une section..."
+                        options={[
+                          { value: "", label: "Sélectionner une section..." },
+                          ...sections.map((sec) => ({ value: sec, label: sec })),
+                        ]}
+                      />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -443,23 +436,26 @@ export default function ClassesPage() {
                   <div className="text-xs font-bold text-indigo-900 dark:text-indigo-300">
                     Ajouter un élève compatible à cette classe :
                   </div>
-                  <div className="flex gap-2">
-                    <select
-                      value={selectedStudentToAdd}
-                      onChange={(e) => setSelectedStudentToAdd(e.target.value)}
-                      className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200"
-                    >
-                      <option value="">Sélectionner un élève disponible...</option>
-                      {eligibleStudents.map((st) => (
-                        <option key={st.id} value={st.id}>
-                          {st.lastName} {st.firstName} ({st.parentPhone})
-                        </option>
-                      ))}
-                    </select>
+                  <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                    <div className="flex-1 min-w-0">
+                      <TouchSelect
+                        title="Sélectionner un élève"
+                        value={selectedStudentToAdd}
+                        onChange={(val) => setSelectedStudentToAdd(val)}
+                        placeholder="Sélectionner un élève disponible..."
+                        options={[
+                          { value: "", label: "Sélectionner un élève disponible..." },
+                          ...eligibleStudents.map((st) => ({
+                            value: st.id,
+                            label: `${st.lastName} ${st.firstName} (${st.parentPhone})`,
+                          })),
+                        ]}
+                      />
+                    </div>
                     <button
                       onClick={handleAddStudentToClass}
                       disabled={!selectedStudentToAdd}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1 shrink-0"
+                      className="px-4 py-3 sm:py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1 shrink-0 transition"
                     >
                       <UserPlus className="w-3.5 h-3.5" />
                       <span>Ajouter</span>

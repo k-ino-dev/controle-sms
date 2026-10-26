@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { TouchSelect } from "@/components/TouchSelect";
 
 const levels = ["7ème", "8ème", "9ème", "1ère", "2ème", "3ème", "Bac"];
 const sections = ["Informatique", "Sciences", "Lettres"];
@@ -245,32 +246,32 @@ export default function ElevesPage() {
           </div>
 
           {/* Filtre Niveau */}
-          <select
-            value={selectedLevel}
-            onChange={(e) => setSelectedLevel(e.target.value)}
-            className="w-full md:w-40 py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 text-slate-700 dark:text-slate-200"
-          >
-            <option value="">Tous les niveaux</option>
-            {levels.map((lvl) => (
-              <option key={lvl} value={lvl}>
-                {lvl}
-              </option>
-            ))}
-          </select>
+          <div className="w-full md:w-44">
+            <TouchSelect
+              title="Filtrer par niveau"
+              value={selectedLevel}
+              onChange={setSelectedLevel}
+              placeholder="Tous les niveaux"
+              options={[
+                { value: "", label: "Tous les niveaux" },
+                ...levels.map((lvl) => ({ value: lvl, label: lvl })),
+              ]}
+            />
+          </div>
 
           {/* Filtre Section */}
-          <select
-            value={selectedSection}
-            onChange={(e) => setSelectedSection(e.target.value)}
-            className="w-full md:w-40 py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 text-slate-700 dark:text-slate-200"
-          >
-            <option value="">Toutes sections</option>
-            {sections.map((sec) => (
-              <option key={sec} value={sec}>
-                {sec}
-              </option>
-            ))}
-          </select>
+          <div className="w-full md:w-44">
+            <TouchSelect
+              title="Filtrer par section"
+              value={selectedSection}
+              onChange={setSelectedSection}
+              placeholder="Toutes sections"
+              options={[
+                { value: "", label: "Toutes sections" },
+                ...sections.map((sec) => ({ value: sec, label: sec })),
+              ]}
+            />
+          </div>
 
           {/* Filtre Archivés */}
           <button
@@ -478,22 +479,17 @@ export default function ElevesPage() {
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Niveau
                     </label>
-                    <select
+                    <TouchSelect
+                      title="Choisir le niveau"
                       value={formLevel}
-                      onChange={(e) => {
-                        setFormLevel(e.target.value);
-                        if (!["2ème", "3ème", "Bac"].includes(e.target.value)) {
+                      onChange={(val) => {
+                        setFormLevel(val);
+                        if (!["2ème", "3ème", "Bac"].includes(val)) {
                           setFormSection("");
                         }
                       }}
-                      className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 text-slate-800 dark:text-slate-200"
-                    >
-                      {levels.map((lvl) => (
-                        <option key={lvl} value={lvl}>
-                          {lvl}
-                        </option>
-                      ))}
-                    </select>
+                      options={levels.map((lvl) => ({ value: lvl, label: lvl }))}
+                    />
                   </div>
 
                   {/* Section avec animation conditionnelle (uniquement 2ème, 3ème, Bac) */}
@@ -508,19 +504,16 @@ export default function ElevesPage() {
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                           Section
                         </label>
-                        <select
-                          required
+                        <TouchSelect
+                          title="Choisir la section"
                           value={formSection}
-                          onChange={(e) => setFormSection(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 text-slate-800 dark:text-slate-200"
-                        >
-                          <option value="">Choisir section...</option>
-                          {sections.map((sec) => (
-                            <option key={sec} value={sec}>
-                              {sec}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(val) => setFormSection(val)}
+                          placeholder="Choisir section..."
+                          options={[
+                            { value: "", label: "Choisir section..." },
+                            ...sections.map((sec) => ({ value: sec, label: sec })),
+                          ]}
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -530,18 +523,16 @@ export default function ElevesPage() {
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Affecter à une classe (optionnel)
                   </label>
-                  <select
+                  <TouchSelect
+                    title="Choisir la classe"
                     value={formClassId}
-                    onChange={(e) => setFormClassId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 text-slate-800 dark:text-slate-200"
-                  >
-                    <option value="">Aucune affectation</option>
-                    {filteredFormClasses.map((cls) => (
-                      <option key={cls.id} value={cls.id}>
-                        {cls.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setFormClassId(val)}
+                    placeholder="Aucune affectation"
+                    options={[
+                      { value: "", label: "Aucune affectation" },
+                      ...filteredFormClasses.map((cls) => ({ value: cls.id, label: cls.name })),
+                    ]}
+                  />
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200/60 dark:border-slate-800/60">
