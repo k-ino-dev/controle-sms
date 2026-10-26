@@ -19,15 +19,7 @@ import { useState } from "react";
 import { SmsServicePill } from "./SmsServicePill";
 import { ThemeToggle } from "./ThemeToggle";
 
-const navItems = [
-  { name: "Tableau de bord", href: "/", icon: LayoutDashboard },
-  { name: "Contrôle d'absence", href: "/presence", icon: UserCheck, highlight: true },
-  { name: "Élèves", href: "/eleves", icon: GraduationCap },
-  { name: "Classes", href: "/classes", icon: School },
-  { name: "Paiements", href: "/paiements", icon: CreditCard },
-  { name: "Historique SMS", href: "/sms", icon: MessageSquareText },
-  { name: "Paramètres", href: "/parametres", icon: Settings },
-];
+import { ALL_NAV_ITEMS } from "@/lib/navigation";
 
 export function Sidebar({
   schoolName = "معهد الامتياز الخاص",
@@ -101,7 +93,7 @@ export function Sidebar({
 
       {/* Navigation Links */}
       <div className="flex-1 py-4 px-3 space-y-1.5 overflow-y-auto">
-        {navItems.map((item) => {
+        {ALL_NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
 

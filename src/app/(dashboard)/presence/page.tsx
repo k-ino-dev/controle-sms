@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   UserCheck,
   UserX,
@@ -14,6 +15,7 @@ import {
   Check,
   AlertCircle,
   RotateCcw,
+  Plus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getCurrentTimeHHMM } from "@/lib/utils";
@@ -172,7 +174,7 @@ export default function PresencePage() {
   }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-28 md:pb-8">
       {/* En-tête de la page */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -194,37 +196,66 @@ export default function PresencePage() {
         </div>
       </div>
 
-      {/* Sélection de la classe via TouchSelect personnalisé */}
-      <div className="p-4 rounded-3xl glass-card flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-            Choisir la classe :
-          </label>
-          <TouchSelect
-            title="Choisir la classe"
-            value={selectedClassId}
-            onChange={setSelectedClassId}
-            disabled={submitting}
-            options={classOptions}
-            placeholder="Sélectionner une classe..."
-            icon={<School className="w-5 h-5 text-indigo-500" />}
-            buttonClassName="font-bold border-slate-200 dark:border-slate-700"
-          />
+      {loadingClasses ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
         </div>
+      ) : classes.length === 0 ? (
+        <div className="p-10 sm:p-14 text-center rounded-3xl glass-card space-y-4">
+          <div className="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto shadow-sm">
+            <School className="w-8 h-8" />
+          </div>
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+              Aucune classe configurée
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              Pour effectuer l'appel d'absence, vous devez d'abord créer au moins une classe.
+            </p>
+          </div>
+          <div>
+            <Link
+              href="/classes"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-colored-primary transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Créer une classe</span>
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Sélection de la classe via TouchSelect personnalisé */}
+          <div className="p-4 rounded-3xl glass-card flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Choisir la classe :
+              </label>
+              <TouchSelect
+                title="Choisir la classe"
+                value={selectedClassId}
+                onChange={setSelectedClassId}
+                disabled={submitting}
+                options={classOptions}
+                placeholder="Sélectionner une classe..."
+                icon={<School className="w-5 h-5 text-indigo-500" />}
+                buttonClassName="font-bold border-slate-200 dark:border-slate-700"
+              />
+            </div>
 
-        {/* Compteur interactif en direct */}
-        <div className="flex items-center justify-center gap-3 bg-slate-50 dark:bg-slate-800/60 p-3 sm:px-4 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 shrink-0 self-stretch sm:self-auto">
-          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            <span>{presentCount} Présent(s)</span>
+            {/* Compteur interactif en direct */}
+            <div className="flex items-center justify-center gap-3 bg-slate-50 dark:bg-slate-800/60 p-3 sm:px-4 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 shrink-0 self-stretch sm:self-auto">
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <span>{presentCount} Présent(s)</span>
+              </div>
+              <span className="text-slate-300 dark:text-slate-600">|</span>
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-rose-600 dark:text-rose-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
+                <span>{absentCount} Absent(s)</span>
+              </div>
+            </div>
           </div>
-          <span className="text-slate-300 dark:text-slate-600">|</span>
-          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-rose-600 dark:text-rose-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
-            <span>{absentCount} Absent(s)</span>
-          </div>
-        </div>
-      </div>
 
       {/* Message de confirmation de succès après enregistrement */}
       <AnimatePresence>
@@ -409,6 +440,8 @@ export default function PresencePage() {
           )}
         </div>
       )}
-    </div>
+    </>
+  )}
+</div>
   );
 }

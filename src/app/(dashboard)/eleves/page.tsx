@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Users,
   Search,
@@ -12,6 +13,7 @@ import {
   Edit2,
   Phone,
   GraduationCap,
+  School,
   X,
   Check,
   Calendar,
@@ -207,7 +209,7 @@ export default function ElevesPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-28 md:pb-8">
       {/* En-tête et bouton Ajouter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -229,6 +231,32 @@ export default function ElevesPage() {
           <span>Ajouter un élève</span>
         </motion.button>
       </div>
+
+      {/* Raccourci vers la page Classes si aucune classe n'existe */}
+      {classes.length === 0 && !loading && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <School className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-indigo-950 dark:text-indigo-200">
+                Aucune classe configurée
+              </h4>
+              <p className="text-xs text-indigo-700/80 dark:text-indigo-400">
+                Créez d'abord vos classes pour pouvoir y affecter vos élèves.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/classes"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Créer une classe</span>
+          </Link>
+        </div>
+      )}
 
       {/* Barre de filtres et recherche */}
       <div className="p-4 rounded-3xl glass-card space-y-3">
