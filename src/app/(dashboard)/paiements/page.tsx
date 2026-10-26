@@ -380,8 +380,19 @@ export default function PaiementsPage() {
         <div className="p-12 text-center rounded-3xl glass-card">
           <CreditCard className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
-            Aucun élève trouvé
+            {selectedClassId && !search
+              ? "Cette classe n'a pas d'élève"
+              : search
+              ? "Aucun élève trouvé pour cette recherche"
+              : "Aucun élève trouvé"}
           </h3>
+          <p className="text-xs text-slate-400 mt-1">
+            {selectedClassId && !search
+              ? "Affectez d'abord des élèves à cette classe dans le menu Classes pour gérer leurs paiements."
+              : search
+              ? "Vérifiez l'orthographe du nom ou du numéro de téléphone."
+              : "Inscrivez des élèves dans le menu Élèves."}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">

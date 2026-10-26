@@ -14,6 +14,11 @@ export async function GET(req: NextRequest) {
     const classes = await prisma.class.findMany({
       include: {
         enrollments: {
+          where: {
+            student: {
+              isArchived: false,
+            },
+          },
           include: {
             student: true,
           },

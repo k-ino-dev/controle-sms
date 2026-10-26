@@ -32,25 +32,37 @@ export async function GET(req: NextRequest) {
     };
     const tarifs = tarifsSetting ? JSON.parse(tarifsSetting.value) : defaultTarifs;
 
-    const whereClause: any = {
-      isArchived: false,
-    };
+    const andConditions: any[] = [{ isArchived: false }];
 
-    if (level) whereClause.level = level;
-    if (section) whereClause.section = section;
+    if (level) andConditions.push({ level });
+    if (section) andConditions.push({ section });
     if (classId) {
-      whereClause.enrollments = {
-        some: { classId },
-      };
+      // Filtrer par classe en utilisant l'identifiant de la classe (avec tolérance si le nom est transmis)
+      andConditions.push({
+        enrollments: {
+          some: {
+            OR: [
+              { classId: classId },
+              { class: { id: classId } },
+              { class: { name: classId } },
+            ],
+          },
+        },
+      });
     }
 
     if (search) {
-      whereClause.OR = [
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { parentPhone: { contains: search } },
-      ];
+      const trimmedSearch = search.trim();
+      andConditions.push({
+        OR: [
+          { firstName: { contains: trimmedSearch } },
+          { lastName: { contains: trimmedSearch } },
+          { parentPhone: { contains: trimmedSearch } },
+        ],
+      });
     }
+
+    const whereClause = { AND: andConditions };
 
     const students = await prisma.student.findMany({
       where: whereClause,
