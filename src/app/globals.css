@@ -86,32 +86,8 @@
   background: #334155;
 }
 
-/* Ligne de découpe pour l'affichage écran et impression */
-.print-divider {
-  border-bottom: 2px dashed #7A2E3A;
-  margin: 1rem 0;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.print-divider::after {
-  content: "✂ Ligne de découpe (Exemplaire École / Exemplaire Parent)";
-  position: absolute;
-  top: -9px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #F1F5F9;
-  padding: 0 12px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #7A2E3A;
-  border-radius: 9999px;
-}
-
 /* ========================================================
-   IMPRESSION DU REÇU DE PAIEMENT CONFORME A4 PORTRAIT
+   IMPRESSION DU REÇU DE PAIEMENT - PAGE UNIQUE A4 PORTRAIT
    ======================================================== */
 
 @media screen {
@@ -123,7 +99,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 0;
   }
 
   html,
@@ -135,11 +111,11 @@
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    overflow: hidden !important;
     position: static !important;
     filter: none !important;
     -webkit-filter: none !important;
@@ -153,93 +129,117 @@
     display: none !important;
   }
 
-  /* Conteneur d'impression racine monté via portail dans body */
+  /* Conteneur d'impression racine monté via portail dans body (210mm x 297mm) */
   #print-root {
     display: block !important;
-    position: static !important;
-    margin: 0 auto !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    margin: 0 !important;
     padding: 0 !important;
-    width: 190mm !important;
-    max-width: 190mm !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    min-height: 297mm !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
     color: #000000 !important;
     box-sizing: border-box !important;
-    overflow: visible !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: avoid !important;
+    break-inside: avoid !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Feuille A4 contenant les deux exemplaires */
+  /* Feuille A4 contenant exactement les deux exemplaires et la ligne médiane */
   .print-receipt-sheet {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    width: 190mm !important;
-    height: 270mm !important;
-    max-height: 270mm !important;
+    display: grid !important;
+    grid-template-rows: 148mm 1mm 148mm !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    min-height: 297mm !important;
     box-sizing: border-box !important;
     margin: 0 !important;
     padding: 0 !important;
+    overflow: hidden !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     page-break-after: avoid !important;
     break-after: avoid !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
   }
 
-  /* Chaque exemplaire : hauteur exacte 128mm (2 x 128mm = 256mm) */
+  /* Chaque exemplaire occupe 148mm de hauteur */
   .print-receipt-copy {
-    height: 128mm !important;
-    max-height: 128mm !important;
-    min-height: 128mm !important;
-    width: 100% !important;
+    height: 148mm !important;
+    max-height: 148mm !important;
+    min-height: 148mm !important;
+    width: 194mm !important;
+    max-width: 194mm !important;
     box-sizing: border-box !important;
+    margin: 0 auto !important;
+    padding: 8mm 10mm !important;
+    position: relative !important;
     overflow: hidden !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
     border: 3px double #2B3F66 !important;
-    border-radius: 12px !important;
-    padding: 6mm 8mm !important;
+    border-radius: 8px !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
     color: #0f172a !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Ligne de découpe au milieu : hauteur ~14mm (256mm + 14mm = 270mm <= 277mm) */
-  .print-divider {
-    height: 14mm !important;
-    max-height: 14mm !important;
-    min-height: 14mm !important;
+  /* Ligne de découpe unique au milieu (exactement à 148,5mm du haut) */
+  .print-cut-line {
+    height: 1mm !important;
+    max-height: 1mm !important;
+    min-height: 1mm !important;
+    width: 100% !important;
+    position: relative !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    position: relative !important;
     box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border-top: 1px dashed #7A2E3A !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
-  .print-divider::before {
-    content: "" !important;
+  .print-cut-line-text {
     position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
     top: 50% !important;
-    border-bottom: 2px dashed #7A2E3A !important;
-  }
-
-  .print-divider-text {
-    position: relative !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
-    padding: 0 14px !important;
+    padding: 0 8mm !important;
     font-size: 8pt !important;
+    line-height: 1 !important;
     font-weight: 700 !important;
     color: #7A2E3A !important;
-    z-index: 2 !important;
+    white-space: nowrap !important;
     letter-spacing: 0.5px !important;
+    z-index: 2 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
