@@ -102,7 +102,8 @@ model SmsQueue {
   message     String
   partsCount  Int       @default(1)
   type        String    // "absence" | "paiement - option 1" | "paiement - option 2" | "test"
-  status      String    @default("pending") // "pending" | "sent" | "failed"
+  status      String    @default("pending") // "pending" | "sent" | "failed" | "uncertain"
+  providerRef String?   // Référence officielle retournée par WinSMS (ex: "5818303")
   failReason  String?
   rawResponse String?
   retryCount  Int       @default(0)

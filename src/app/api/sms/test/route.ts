@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     const { segments } = calculateSmsSegments(testMessage);
 
-    // Envoi via l'API (avec timeout 15s et encodage complet)
+    // Envoi via le provider
     const result = await provider.send(normalized.normalized, testMessage, senderId);
 
     // Masquage absolu de la clé API pour l'historique en base
@@ -51,14 +51,18 @@ export async function POST(req: NextRequest) {
       ? sanitizeApiKeyInString(JSON.stringify(result.raw))
       : null;
 
+    // Statut en base : "sent", "uncertain" ou "failed"
+    const queueStatus = result.success ? "sent" : result.isUncertain ? "uncertain" : "failed";
+
     // Enregistrement dans l'historique
     await prisma.smsQueue.create({
       data: {
         parentPhone: normalized.normalized,
         message: testMessage,
         type: "test",
-        status: result.success ? "sent" : "failed",
+        status: queueStatus,
         sentAt: result.success ? new Date() : null,
+        providerRef: result.reference || null,
         failReason: result.error || null,
         rawResponse: sanitizedRaw,
         partsCount: segments,
@@ -66,28 +70,36 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Mise à jour du solde
-    let balance = 0;
-    try {
-      balance = await provider.getBalance();
+    // Mise à jour immédiate du solde affiché si retourné par WinSMS
+    if (result.success && typeof result.balance === "number") {
       await prisma.smsServiceStatus.upsert({
         where: { id: "singleton" },
         update: {
-          balance,
+          balance: result.balance,
           lastCheckedAt: new Date(),
-          lastSendStatus: result.success ? "success" : "error",
+          lastSendStatus: "success",
+          lastError: null,
+        },
+        create: {
+          id: "singleton",
+          balance: result.balance,
+          lastCheckedAt: new Date(),
+          lastSendStatus: "success",
+        },
+      });
+    } else if (!result.success) {
+      await prisma.smsServiceStatus.upsert({
+        where: { id: "singleton" },
+        update: {
+          lastSendStatus: "error",
           lastError: result.error || null,
         },
         create: {
           id: "singleton",
-          balance,
-          lastCheckedAt: new Date(),
-          lastSendStatus: result.success ? "success" : "error",
+          lastSendStatus: "error",
           lastError: result.error || null,
         },
       });
-    } catch {
-      // Ignorer
     }
 
     if (!result.success) {
@@ -95,9 +107,11 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           error: result.error || "Échec de l'envoi du SMS de test.",
+          rawCode: result.rawCode,
+          rawMessage: result.rawMessage,
           mode: config.mode,
         },
-        { status: 502 }
+        { status: 400 }
       );
     }
 
@@ -106,7 +120,10 @@ export async function POST(req: NextRequest) {
       message: "SMS de test envoyé avec succès !",
       phone: normalized.normalized,
       segments,
-      balance,
+      balance: result.balance,
+      providerRef: result.reference,
+      rawCode: result.rawCode,
+      rawMessage: result.rawMessage,
       mode: config.mode,
       senderId,
     });

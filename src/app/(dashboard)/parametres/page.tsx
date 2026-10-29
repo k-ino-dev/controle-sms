@@ -250,13 +250,14 @@ export default function ParametresPage() {
       if (res.ok && data.success) {
         setTestResult({
           success: true,
-          message: `✓ SMS envoyé avec succès au ${data.phone} (${data.segments} segment${data.segments > 1 ? "s" : ""}) via ${data.mode === "winsms" ? "WinSMS (Mode Réel)" : "Simulation"}. Solde restant : ${data.balance} SMS.`,
+          message: `✓ SMS envoyé avec succès au ${data.phone} (${data.segments} segment${data.segments > 1 ? "s" : ""})\n• Réponse WinSMS : code "${data.rawCode || "ok"}" — "${data.rawMessage || "Successfully Send"}"\n• Réf. d'envoi : ${data.providerRef || "N/A"}\n• Solde WinSMS restant : ${data.balance ?? "Inconnu"} SMS`,
         });
         fetchStatus();
       } else {
+        const rawInfo = data.rawCode ? `\n• Réponse WinSMS : code "${data.rawCode}" — "${data.rawMessage || ""}"` : "";
         setTestResult({
           success: false,
-          message: `Échec de l'envoi : ${data.error || "Une erreur est survenue lors de l'envoi."}`,
+          message: `Échec de l'envoi : ${data.error || "Une erreur est survenue lors de l'envoi."}${rawInfo}`,
         });
       }
     } catch {
@@ -1187,7 +1188,7 @@ export default function ParametresPage() {
 
             {testResult && (
               <div
-                className={`p-4 rounded-2xl text-xs font-semibold ${
+                className={`p-4 rounded-2xl text-xs font-semibold whitespace-pre-line leading-relaxed ${
                   testResult.success
                     ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
                     : "bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300"

@@ -15,6 +15,7 @@ import {
   Send,
   Phone,
   Layers,
+  HelpCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatDateTime } from "@/lib/utils";
@@ -62,14 +63,20 @@ export default function SmsHistoryPage() {
   }, [statusFilter, typeFilter, search, dateFilter]);
 
   const handleRetrySms = async (id: string) => {
+    if (!window.confirm("Attention : veuillez vous assurer que ce SMS n'a pas déjà été reçu par le parent avant de le renvoyer. Souhaitez-vous vraiment procéder à la réexpédition ?")) {
+      return;
+    }
     setRetryingId(id);
     try {
       const res = await fetch(`/api/sms/${id}/retry`, { method: "POST" });
-      if (res.ok) {
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Impossible de réexpédier ce message.");
+      } else {
         fetchLogs();
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      alert("Erreur de connexion lors de la réexpédition.");
     } finally {
       setRetryingId(null);
     }
@@ -155,6 +162,7 @@ export default function SmsHistoryPage() {
           <option value="">Tous statuts</option>
           <option value="sent">Envoyé</option>
           <option value="pending">En attente</option>
+          <option value="uncertain">Statut incertain</option>
           <option value="failed">Échec</option>
         </select>
 
@@ -195,6 +203,7 @@ export default function SmsHistoryPage() {
           {logs.map((sms) => {
             const isSent = sms.status === "sent";
             const isPending = sms.status === "pending";
+            const isUncertain = sms.status === "uncertain";
             const isFailed = sms.status === "failed";
 
             return (
@@ -210,6 +219,8 @@ export default function SmsHistoryPage() {
                         isSent
                           ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
                           : isPending
+                          ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
+                          : isUncertain
                           ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
                           : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30"
                       }`}
@@ -224,6 +235,11 @@ export default function SmsHistoryPage() {
                           <Clock className="w-3.5 h-3.5 animate-spin" />
                           <span>En attente ({sms.retryCount}/3)</span>
                         </>
+                      ) : isUncertain ? (
+                        <>
+                          <HelpCircle className="w-3.5 h-3.5" />
+                          <span>Statut incertain</span>
+                        </>
                       ) : (
                         <>
                           <XCircle className="w-3.5 h-3.5" />
@@ -231,6 +247,13 @@ export default function SmsHistoryPage() {
                         </>
                       )}
                     </span>
+
+                    {/* Référence officielle WinSMS */}
+                    {sms.providerRef && (
+                      <span className="px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-mono font-bold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                        <span>Réf WinSMS : {sms.providerRef}</span>
+                      </span>
+                    )}
 
                     {/* Badge Type */}
                     <span className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold capitalize">
@@ -269,22 +292,22 @@ export default function SmsHistoryPage() {
                     {sms.message}
                   </div>
 
-                  {/* Cause d'échec en français */}
-                  {isFailed && sms.failReason && (
-                    <div className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5 font-medium">
+                  {/* Cause d'échec ou d'incertitude */}
+                  {(isFailed || isUncertain) && sms.failReason && (
+                    <div className={`text-xs flex items-center gap-1.5 font-medium ${isUncertain ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"}`}>
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      <span>Cause du refus : {sms.failReason}</span>
+                      <span>{isUncertain ? "Attention : " : "Cause du refus : "}{sms.failReason}</span>
                     </div>
                   )}
                 </div>
 
-                {/* Bouton Renvoyer pour les SMS en échec */}
-                {isFailed && (
+                {/* Bouton Renvoyer pour les SMS en échec ou statut incertain */}
+                {(isFailed || isUncertain) && (
                   <div className="shrink-0 self-end md:self-center">
                     <button
                       onClick={() => handleRetrySms(sms.id)}
                       disabled={retryingId === sms.id}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-colored-primary flex items-center gap-1.5 transition disabled:opacity-50"
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-colored-primary flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
                     >
                       {retryingId === sms.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
