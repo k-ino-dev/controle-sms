@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_TEMPLATES } from "@/lib/sms/templates";
+import { getEffectiveSmsConfig } from "@/lib/sms";
+import { encryptText } from "@/lib/crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +77,10 @@ export async function GET() {
       });
     }
 
+    // Résolution sécurisée de la configuration SMS selon la règle de priorité :
+    // Base de données (chiffrée) > .env > Valeurs par défaut
+    const smsConfig = await getEffectiveSmsConfig();
+
     return NextResponse.json({
       success: true,
       settings: {
@@ -87,12 +93,16 @@ export async function GET() {
         sms_template_absence: smsTemplateAbsence,
         sms_template_payment_opt1: smsTemplatePaymentOpt1,
         sms_template_payment_opt2: smsTemplatePaymentOpt2,
-        winsms_sender_id:
-          settingsMap["winsms_sender_id"] || process.env.WINSMS_SENDER_ID || "ELIMTIAZ",
-        winsms_api_key:
-          settingsMap["winsms_api_key"] || process.env.WINSMS_API_KEY || "",
-        winsms_api_url:
-          settingsMap["winsms_api_url"] || process.env.WINSMS_API_URL || "https://api.winsms.tn/v1",
+
+        // Configuration WinSMS sécurisée :
+        // La clé API brute n'est JAMAIS renvoyée au navigateur client.
+        winsms_api_key: "", // Toujours vide côté client
+        winsms_api_key_configured: smsConfig.isConfigured, // Booléen
+        winsms_api_key_masked: smsConfig.maskedKey, // ex: "***XXXX"
+        winsms_sender_id: smsConfig.senderId,
+        winsms_api_url: smsConfig.apiUrl,
+        sms_provider_mode: smsConfig.mode, // "winsms" | "mock"
+
         sms_low_balance_threshold: settingsMap["sms_low_balance_threshold"]
           ? parseInt(settingsMap["sms_low_balance_threshold"], 10)
           : 25,
@@ -119,6 +129,33 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
+    // 1. Gestion ultra-sécurisée de la clé API WinSMS
+    if (body.delete_winsms_api_key === true || body.winsms_api_key === "__DELETE__") {
+      // Suppression explicite de la clé enregistrée en base
+      await prisma.setting.deleteMany({
+        where: { key: "winsms_api_key" },
+      });
+    } else if (typeof body.winsms_api_key === "string" && body.winsms_api_key.trim().length > 0) {
+      // Nouvelle clé saisie : chiffrement fort AES-256-GCM avant stockage
+      const encryptedKey = encryptText(body.winsms_api_key.trim());
+      await prisma.setting.upsert({
+        where: { key: "winsms_api_key" },
+        update: { value: encryptedKey },
+        create: { key: "winsms_api_key", value: encryptedKey },
+      });
+    }
+    // Si body.winsms_api_key est vide ou non renseigné, la clé existante est conservée intacte.
+
+    // 2. Mode Fournisseur SMS ("winsms" ou "mock")
+    if (body.sms_provider_mode === "winsms" || body.sms_provider_mode === "mock") {
+      await prisma.setting.upsert({
+        where: { key: "sms_provider_mode" },
+        update: { value: body.sms_provider_mode },
+        create: { key: "sms_provider_mode", value: body.sms_provider_mode },
+      });
+    }
+
+    // 3. Autres clés de configuration autorisées
     const allowedKeys = [
       "school_name",
       "school_name_fr",
@@ -129,7 +166,6 @@ export async function POST(req: NextRequest) {
       "sms_template_payment_opt1",
       "sms_template_payment_opt2",
       "winsms_sender_id",
-      "winsms_api_key",
       "winsms_api_url",
       "sms_low_balance_threshold",
       "sms_delay_between_sends",
@@ -147,7 +183,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Tarifs par niveau
+    // 4. Tarifs par niveau
     if (body.prices_by_level && typeof body.prices_by_level === "object") {
       await prisma.setting.upsert({
         where: { key: "prices_by_level" },

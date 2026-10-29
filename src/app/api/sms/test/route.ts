@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getSmsProvider, normalizeTunisianPhone, calculateSmsSegments } from "@/lib/sms";
+import { getEffectiveSmsProvider, normalizeTunisianPhone, calculateSmsSegments } from "@/lib/sms";
+import { sanitizeApiKeyInString } from "@/lib/crypto";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  // Vérification stricte des droits : seul le directeur authentifié peut tester la connexion
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
@@ -24,28 +26,32 @@ export async function POST(req: NextRequest) {
     const normalized = normalizeTunisianPhone(phone);
     if (!normalized.valid) {
       return NextResponse.json(
-        { error: normalized.error || "Numéro de téléphone invalide." },
+        { error: normalized.error || "Numéro de téléphone invalide (8 chiffres attendus)." },
         { status: 400 }
       );
     }
 
+    // Message par défaut en arabe officiel
     const testMessage =
       message && message.trim()
         ? message.trim()
-        : "رسالة تجريبية من معهد الامتياز الخاص. نظام المراقبة والإرسال WinSMS يعمل بنجاح.";
+        : "رسالة اختبارية من معهد الامتياز - خدمة الرسائل القصيرة تعمل بنجاح";
 
-    // Sender ID
-    const senderIdSetting = await prisma.setting.findUnique({
-      where: { key: "winsms_sender_id" },
-    });
-    const senderId = senderIdSetting?.value || process.env.WINSMS_SENDER_ID || "ELIMTIAZ";
+    // Résolution du fournisseur selon l'ordre de priorité (Base > Env > Simulation)
+    const { provider, config } = await getEffectiveSmsProvider();
+    const senderId = config.senderId || "Lyc.Emtiyez";
 
     const { segments } = calculateSmsSegments(testMessage);
-    const provider = getSmsProvider();
 
+    // Envoi via l'API (avec timeout 15s et encodage complet)
     const result = await provider.send(normalized.normalized, testMessage, senderId);
 
-    // Enregistrer dans la base de données pour l'historique
+    // Masquage absolu de la clé API pour l'historique en base
+    const sanitizedRaw = result.raw
+      ? sanitizeApiKeyInString(JSON.stringify(result.raw))
+      : null;
+
+    // Enregistrement dans l'historique
     await prisma.smsQueue.create({
       data: {
         parentPhone: normalized.normalized,
@@ -54,13 +60,13 @@ export async function POST(req: NextRequest) {
         status: result.success ? "sent" : "failed",
         sentAt: result.success ? new Date() : null,
         failReason: result.error || null,
-        rawResponse: result.raw ? JSON.stringify(result.raw) : null,
+        rawResponse: sanitizedRaw,
         partsCount: segments,
         retryCount: 1,
       },
     });
 
-    // Mettre à jour le solde
+    // Mise à jour du solde
     let balance = 0;
     try {
       balance = await provider.getBalance();
@@ -89,7 +95,7 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           error: result.error || "Échec de l'envoi du SMS de test.",
-          raw: result.raw,
+          mode: config.mode,
         },
         { status: 502 }
       );
@@ -101,6 +107,8 @@ export async function POST(req: NextRequest) {
       phone: normalized.normalized,
       segments,
       balance,
+      mode: config.mode,
+      senderId,
     });
   } catch (error) {
     console.error("[API sms/test] Erreur :", error);

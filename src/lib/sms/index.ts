@@ -6,8 +6,9 @@ export * from "./types";
 export * from "./winsms";
 export * from "./mock";
 export * from "./templates";
+export * from "./config";
 
-// Instance unique (singleton) du fournisseur SMS
+// Instance de secours synchrone du fournisseur SMS
 let providerInstance: SmsProvider | null = null;
 
 export function getSmsProvider(): SmsProvider {

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { getSmsProvider, normalizeTunisianPhone } from "./index";
+import { getEffectiveSmsProvider, normalizeTunisianPhone } from "./index";
+import { sanitizeApiKeyInString } from "@/lib/crypto";
 
 let isRunning = false;
 let workerInterval: NodeJS.Timeout | null = null;
@@ -25,7 +26,7 @@ export async function processSmsQueueOnce(): Promise<{
   let requeued = 0;
 
   try {
-    const provider = getSmsProvider();
+    const { provider, config } = await getEffectiveSmsProvider();
     const now = new Date();
 
     // 1. Récupération périodique du solde WinSMS (toutes les 60 secondes max)
@@ -87,11 +88,8 @@ export async function processSmsQueueOnce(): Promise<{
       return { processed: 0, sent: 0, failed: 0, requeued: 0 };
     }
 
-    // Récupérer le senderId configuré s'il existe
-    const senderIdSetting = await prisma.setting.findUnique({
-      where: { key: "winsms_sender_id" },
-    });
-    const senderId = senderIdSetting?.value || process.env.WINSMS_SENDER_ID || "IMTIYAZ";
+    // Sender ID configuré avec priorité Base > Env > Défaut (Lyc.Emtiyez)
+    const senderId = config.senderId || "Lyc.Emtiyez";
 
     for (const msg of pendingMessages) {
       processed++;
@@ -113,6 +111,9 @@ export async function processSmsQueueOnce(): Promise<{
 
       // Appel de l'envoi via l'interface SmsProvider
       const result = await provider.send(phoneResult.normalized, msg.message, senderId);
+      const sanitizedRawString = result.raw
+        ? sanitizeApiKeyInString(JSON.stringify(result.raw))
+        : null;
 
       if (result.success) {
         sent++;
@@ -122,7 +123,7 @@ export async function processSmsQueueOnce(): Promise<{
             status: "sent",
             sentAt: new Date(),
             failReason: null,
-            rawResponse: result.raw ? JSON.stringify(result.raw) : null,
+            rawResponse: sanitizedRawString,
           },
         });
 
@@ -146,7 +147,7 @@ export async function processSmsQueueOnce(): Promise<{
               status: "failed",
               retryCount: nextAttempt,
               failReason: cause,
-              rawResponse: result.raw ? JSON.stringify(result.raw) : null,
+              rawResponse: sanitizedRawString,
             },
           });
         } else {
@@ -166,7 +167,7 @@ export async function processSmsQueueOnce(): Promise<{
               retryCount: nextAttempt,
               nextRetryAt: nextDate,
               failReason: `Tentative ${nextAttempt}/3 échouée : ${cause}`,
-              rawResponse: result.raw ? JSON.stringify(result.raw) : null,
+              rawResponse: sanitizedRawString,
             },
           });
         }

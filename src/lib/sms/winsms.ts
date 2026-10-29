@@ -1,130 +1,151 @@
 import { SmsProvider, SmsResult } from "./types";
+import { normalizeTunisianPhone } from "./index";
+import { sanitizeApiKeyInString, sanitizeObjectForLogging } from "@/lib/crypto";
+
+export interface WinSmsConfigOptions {
+  apiKey?: string;
+  senderId?: string;
+  apiUrl?: string;
+}
 
 /**
- * Implémentation du fournisseur SMS pour WinSMS Tunisie (winsms.tn).
+ * Implémentation du fournisseur SMS pour WinSMS Tunisie (winsmspro.com).
  * 
- * NOTE IMPORTANTE :
- * Tous les endpoints HTTP, les noms de paramètres (ex: key, to, msg, sender)
- * et le formatage des réponses (JSON ou texte brut) sont clairement balisés
- * "À ADAPTER SELON LA DOC WINSMS". Dès réception de la documentation officielle,
- * ajustez simplement les fonctions de sérialisation et de parsing ci-dessous.
+ * Format officiel de l'API :
+ * GET https://www.winsmspro.com/sms/sms/api?action=send-sms&api_key=<CLÉ>&to=216XXXXXXXX&from=<ENTETE>&sms=<TEXTE>
+ * 
+ * L'API détecte automatiquement Plain ou Unicode : l'arabe passe sans paramètre spécial.
+ * Entête par défaut : Lyc.Emtiyez.
  */
 export class WinSmsProvider implements SmsProvider {
   private apiKey: string;
   private senderId: string;
   private apiUrl: string;
 
-  constructor() {
-    this.apiKey = process.env.WINSMS_API_KEY || "";
-    this.senderId = process.env.WINSMS_SENDER_ID || "IMTIYAZ";
-    this.apiUrl = process.env.WINSMS_API_URL || "https://api.winsms.tn";
+  constructor(options?: WinSmsConfigOptions) {
+    this.apiKey = options?.apiKey ?? (process.env.WINSMS_API_KEY || "");
+    this.senderId = options?.senderId ?? (process.env.WINSMS_SENDER_ID || "Lyc.Emtiyez");
+    this.apiUrl = options?.apiUrl ?? (process.env.WINSMS_API_URL || "https://www.winsmspro.com/sms/sms/api");
   }
 
-  /* ==================== À ADAPTER SELON LA DOC WINSMS ==================== */
-  // 1. Envoi de SMS
+  /**
+   * Envoi d'un message SMS via l'API WinSMS (GET avec paramètres encodés)
+   */
   async send(to: string, text: string, senderId?: string): Promise<SmsResult> {
-    if (!this.apiKey) {
+    if (!this.apiKey || !this.apiKey.trim()) {
       return {
         success: false,
         error: "Erreur de configuration (clé API WinSMS absente)",
-        raw: { error: "Missing WINSMS_API_KEY in environment" },
+        raw: { error: "Missing WINSMS_API_KEY" },
       };
     }
 
-    const effectiveSenderId = senderId || this.senderId;
+    const effectiveSenderId = senderId || this.senderId || "Lyc.Emtiyez";
+
+    // Normalisation stricte du numéro au format tunisien 216XXXXXXXX
+    const phoneNorm = normalizeTunisianPhone(to);
+    if (!phoneNorm.valid) {
+      return {
+        success: false,
+        error: "Numéro de téléphone destinataire invalide",
+        raw: { phone: to, error: phoneNorm.error },
+      };
+    }
 
     try {
-      // Configuration de timeout réseau (10 secondes)
+      // Timeout strict de 15 secondes
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      // --- À ADAPTER SELON LA DOC WINSMS (Endpoint & payload) ---
-      // Schéma standard type WinSMS / passerelle SMS tunisienne :
-      // URL usuelle : POST/GET https://api.winsms.tn/send ou https://api.winsms.tn/api/v1/sms/send
-      const endpoint = `${this.apiUrl.replace(/\/$/, "")}/sms/send`;
+      // Construction de l'URL avec URLSearchParams (encodage parfait pour l'arabe, espaces, &, #)
+      const url = new URL(this.apiUrl);
+      url.searchParams.set("action", "send-sms");
+      url.searchParams.set("api_key", this.apiKey);
+      url.searchParams.set("to", phoneNorm.normalized);
+      url.searchParams.set("from", effectiveSenderId);
+      url.searchParams.set("sms", text);
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          // Paramètres typiques WinSMS :
-          apiKey: this.apiKey,
-          sender: effectiveSenderId,
-          receiver: to, // Format 216XXXXXXXX
-          message: text,
-          encoding: "unicode", // Pour l'arabe
-        }),
+      const requestUrl = url.toString();
+
+      const response = await fetch(requestUrl, {
+        method: "GET",
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
       const status = response.status;
+      const responseText = await response.text();
+
       let rawData: any = null;
       try {
-        rawData = await response.json();
+        rawData = JSON.parse(responseText);
       } catch {
-        rawData = await response.text();
+        rawData = responseText;
       }
 
-      // --- À ADAPTER SELON LA DOC WINSMS (Parsing de la réponse de succès) ---
-      // Exemples courants : { success: true, id: "..." } ou { code: 200, message_id: "..." }
-      if (response.ok && (rawData?.success === true || rawData?.code === 200 || rawData?.status === "OK" || (typeof rawData === "string" && rawData.toLowerCase().includes("ok")))) {
-        const messageId = String(rawData?.message_id || rawData?.id || rawData?.msgId || `WINSMS-${Date.now()}`);
+      // La clé API n'apparaît JAMAIS dans les données brutes ou les logs
+      const sanitizedRaw = sanitizeObjectForLogging(rawData);
+
+      // 1. Détection claire de succès
+      if (response.ok && this.isConfirmedSuccess(rawData)) {
+        const messageId = this.extractMessageId(rawData);
         return {
           success: true,
           messageId,
-          raw: rawData,
+          raw: sanitizedRaw,
         };
       }
 
-      // Traduction de l'erreur en cause lisible en français
+      // 2. Traduction des erreurs probables en français
       const frenchError = this.translateErrorCode(status, rawData);
+      if (frenchError) {
+        return {
+          success: false,
+          error: frenchError,
+          raw: sanitizedRaw,
+        };
+      }
 
+      // 3. Ni clairement un succès, ni une erreur reconnue -> Réponse inconnue
       return {
         success: false,
-        error: frenchError,
-        raw: rawData,
+        error: "Réponse inconnue de WinSMS",
+        raw: sanitizedRaw,
       };
     } catch (err: any) {
       if (err.name === "AbortError") {
         return {
           success: false,
           error: "Délai d'attente dépassé (timeout WinSMS)",
-          raw: { error: "Network timeout after 10000ms" },
+          raw: { error: "Network timeout after 15000ms" },
         };
       }
 
       return {
         success: false,
         error: "Service WinSMS indisponible",
-        raw: { error: err.message || String(err) },
+        raw: { error: sanitizeApiKeyInString(err.message || String(err)) },
       };
     }
   }
 
-  /* ==================== À ADAPTER SELON LA DOC WINSMS ==================== */
-  // 2. Consultation du solde / crédit restant
+  /**
+   * Consultation du solde restant WinSMS
+   */
   async getBalance(): Promise<number> {
-    if (!this.apiKey) return 0;
+    if (!this.apiKey || !this.apiKey.trim()) return 0;
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      // Endpoint type pour WinSMS (ex: /sms/balance ou /api/v1/balance)
-      const endpoint = `${this.apiUrl.replace(/\/$/, "")}/sms/balance?apiKey=${encodeURIComponent(this.apiKey)}`;
+      const url = new URL(this.apiUrl);
+      url.searchParams.set("action", "get-balance");
+      url.searchParams.set("api_key", this.apiKey);
 
-      const response = await fetch(endpoint, {
+      const response = await fetch(url.toString(), {
         method: "GET",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Accept": "application/json",
-        },
         signal: controller.signal,
       });
 
@@ -132,44 +153,168 @@ export class WinSmsProvider implements SmsProvider {
 
       if (!response.ok) return 0;
 
-      const data = await response.json();
-      // Exemple typique : { balance: 350 } ou { credits: 350 } ou { solde: 350 }
-      const balance = Number(data?.balance ?? data?.credits ?? data?.solde ?? data?.amount ?? 0);
+      const text = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+
+      const balance = Number(
+        data?.balance ?? data?.credits ?? data?.solde ?? data?.amount ?? (typeof data === "string" ? parseFloat(data) : 0)
+      );
       return isNaN(balance) ? 0 : balance;
-    } catch (err) {
-      console.error("[WinSMS] Erreur lecture solde :", err);
+    } catch {
       return 0;
     }
   }
 
-  /* ==================== TRADUCTION DES ERREURS EN FRANÇAIS ==================== */
-  private translateErrorCode(status: number, raw: any): string {
-    const rawStr = typeof raw === "string" ? raw.toLowerCase() : JSON.stringify(raw).toLowerCase();
+  /**
+   * Vérifie si la réponse confirme sans ambiguïté un succès
+   */
+  private isConfirmedSuccess(raw: any): boolean {
+    if (!raw) return false;
 
-    if (status === 402 || rawStr.includes("credit") || rawStr.includes("solde") || rawStr.includes("balance") || rawStr.includes("no_fund")) {
-      return "Crédit insuffisant";
+    // Réponse objet JSON
+    if (typeof raw === "object") {
+      const statusStr = String(raw.status || "").toLowerCase();
+      if (statusStr === "success" || statusStr === "ok" || statusStr === "sent") return true;
+      if (raw.success === true) return true;
+      if (raw.code === 200 || raw.code === "200") return true;
+      if ((raw.message_id || raw.id || raw.msgId) && !raw.error) return true;
+      return false;
     }
 
-    if (rawStr.includes("invalid_number") || rawStr.includes("phone") || rawStr.includes("destination") || rawStr.includes("numero") || status === 422) {
-      return "Numéro invalide";
+    // Réponse texte brut
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      const lower = trimmed.toLowerCase();
+
+      // Si le texte contient des marqueurs d'erreur, ce n'est pas un succès
+      if (
+        lower.includes("error") ||
+        lower.includes("err:") ||
+        lower.includes("fail") ||
+        lower.includes("invalid") ||
+        lower.includes("refus") ||
+        lower.includes("unauthorized")
+      ) {
+        return false;
+      }
+
+      // Cas 1 : "OK", "OK: 12345", "SUCCESS", "SMS SENT"
+      if (/^(ok|success|sent)/i.test(trimmed)) return true;
+
+      // Cas 2 : Identifiant numérique de message seul (ex: "12345678" ou "ID: 12345678")
+      if (/^\d{3,}$/.test(trimmed) || /^id[:\s]+\d+/i.test(trimmed)) return true;
     }
 
-    if (rawStr.includes("sender") || rawStr.includes("entete") || rawStr.includes("header") || rawStr.includes("sender_id")) {
-      return "Entête refusé";
+    return false;
+  }
+
+  /**
+   * Extrait ou génère un ID de message traçable
+   */
+  private extractMessageId(raw: any): string {
+    if (typeof raw === "object" && raw !== null) {
+      const id = raw.message_id || raw.id || raw.msgId || raw.sms_id;
+      if (id) return String(id);
+    }
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      const match = trimmed.match(/\d{4,}/);
+      if (match) return match[0];
+    }
+    return `WINSMS-${Date.now()}`;
+  }
+
+  /**
+   * Traduit les erreurs connues en français clair
+   */
+  private translateErrorCode(status: number, raw: any): string | null {
+    const rawStr =
+      typeof raw === "string" ? raw.toLowerCase() : JSON.stringify(raw ?? {}).toLowerCase();
+
+    // 1. IP non autorisée (vérifier d'abord si le corps mentionne explicitement l'IP)
+    if (
+      rawStr.includes("ip") &&
+      (rawStr.includes("unauthorized") ||
+        rawStr.includes("whitelist") ||
+        rawStr.includes("not allowed") ||
+        rawStr.includes("forbidden") ||
+        rawStr.includes("interdite") ||
+        rawStr.includes("address"))
+    ) {
+      return "Adresse IP du serveur non autorisée par WinSMS";
     }
 
-    if (status >= 500 || rawStr.includes("service_unavailable") || rawStr.includes("gateway")) {
-      return "Service indisponible";
+    // 2. Crédit insuffisant
+    if (
+      status === 402 ||
+      rawStr.includes("credit") ||
+      rawStr.includes("solde") ||
+      rawStr.includes("balance") ||
+      rawStr.includes("no_fund") ||
+      rawStr.includes("insufficient") ||
+      rawStr.includes("epuise")
+    ) {
+      return "Crédit insuffisant sur votre compte WinSMS";
     }
 
-    if (status === 408 || rawStr.includes("timeout")) {
-      return "Délai d'attente dépassé (timeout)";
+    // 3. Numéro invalide
+    if (
+      status === 422 ||
+      rawStr.includes("invalid_number") ||
+      rawStr.includes("invalid number") ||
+      rawStr.includes("phone") ||
+      rawStr.includes("destination") ||
+      rawStr.includes("numero") ||
+      rawStr.includes("receiver") ||
+      rawStr.includes("bad number")
+    ) {
+      return "Numéro de téléphone destinataire invalide";
     }
 
-    if (status === 401 || status === 403 || rawStr.includes("auth") || rawStr.includes("key")) {
-      return "Clé API invalide ou refusée";
+    // 4. Entête non autorisé
+    if (
+      rawStr.includes("sender") ||
+      rawStr.includes("entete") ||
+      rawStr.includes("header") ||
+      rawStr.includes("sender_id") ||
+      rawStr.includes("from")
+    ) {
+      return "Entête d'expéditeur non autorisé (Sender ID refusé)";
     }
 
-    return "Erreur inconnue de la passerelle SMS";
+    // 5. Clé API invalide
+    if (
+      status === 401 ||
+      status === 403 ||
+      rawStr.includes("invalid_api_key") ||
+      rawStr.includes("invalid key") ||
+      rawStr.includes("bad_key") ||
+      rawStr.includes("key is invalid") ||
+      rawStr.includes("auth") ||
+      rawStr.includes("unauthorized_key") ||
+      rawStr.includes("api key")
+    ) {
+      return "Clé API WinSMS invalide ou refusée";
+    }
+
+    // 6. Service indisponible / Erreur serveur WinSMS
+    if (
+      status >= 500 ||
+      status === 408 ||
+      rawStr.includes("service_unavailable") ||
+      rawStr.includes("gateway") ||
+      rawStr.includes("maintenance") ||
+      rawStr.includes("timeout") ||
+      rawStr.includes("down")
+    ) {
+      return "Service WinSMS indisponible";
+    }
+
+    return null;
   }
 }

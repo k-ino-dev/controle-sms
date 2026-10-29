@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getSmsProvider } from "@/lib/sms";
+import { getEffectiveSmsProvider } from "@/lib/sms";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,8 @@ export async function GET() {
   }
 
   try {
+    const { provider, config } = await getEffectiveSmsProvider();
+
     const statusRecord = await prisma.smsServiceStatus.findUnique({
       where: { id: "singleton" },
     });
@@ -27,7 +29,6 @@ export async function GET() {
 
     if (shouldRefresh) {
       try {
-        const provider = getSmsProvider();
         balance = await provider.getBalance();
         await prisma.smsServiceStatus.upsert({
           where: { id: "singleton" },
@@ -58,7 +59,9 @@ export async function GET() {
       lowBalanceThreshold,
       lastSendStatus,
       lastError: statusRecord?.lastError || null,
-      provider: (process.env.SMS_PROVIDER || "mock").toLowerCase(),
+      provider: config.mode, // "winsms" | "mock"
+      isConfigured: config.isConfigured,
+      senderId: config.senderId,
     });
   } catch (error) {
     console.error("[API sms/status] Erreur :", error);

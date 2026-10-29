@@ -21,6 +21,8 @@ import {
   ShieldCheck,
   Check,
   Zap,
+  Trash2,
+  Key,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SmsServicePill } from "@/components/SmsServicePill";
@@ -50,9 +52,12 @@ export default function ParametresPage() {
     sms_template_absence: DEFAULT_TEMPLATES.sms_template_absence,
     sms_template_payment_opt1: DEFAULT_TEMPLATES.sms_template_payment_opt1,
     sms_template_payment_opt2: DEFAULT_TEMPLATES.sms_template_payment_opt2,
-    winsms_sender_id: "ELIMTIAZ",
+    winsms_sender_id: "Lyc.Emtiyez",
     winsms_api_key: "",
-    winsms_api_url: "https://api.winsms.tn/v1",
+    winsms_api_key_configured: false,
+    winsms_api_key_masked: "",
+    winsms_api_url: "https://www.winsmspro.com/sms/sms/api",
+    sms_provider_mode: "mock",
     sms_low_balance_threshold: 25,
     sms_delay_between_sends: 1000,
     sms_daily_limit: 500,
@@ -78,7 +83,7 @@ export default function ParametresPage() {
   // Test SMS
   const [testPhone, setTestPhone] = useState("");
   const [testMessage, setTestMessage] = useState(
-    "رسالة تجريبية من معهد الامتياز الخاص. نظام المراقبة والإرسال WinSMS يعمل بنجاح."
+    "رسالة اختبارية من معهد الامتياز - خدمة الرسائل القصيرة تعمل بنجاح"
   );
   const [testingSms, setTestingSms] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -145,6 +150,43 @@ export default function ParametresPage() {
       });
       if (res.ok) {
         setSaveSuccess(true);
+        // Recharger les paramètres pour mettre à jour l'état masqué de la clé
+        const refreshedRes = await fetch("/api/parametres");
+        const refreshedData = await refreshedRes.json();
+        if (refreshedData.success) {
+          setSettings((prev: any) => ({
+            ...prev,
+            ...refreshedData.settings,
+            winsms_api_key: "", // Laisser le champ mot de passe vide par sécurité
+          }));
+        }
+        fetchStatus();
+        setTimeout(() => setSaveSuccess(false), 4000);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteApiKey = async () => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer la clé API WinSMS enregistrée ?")) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/parametres", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delete_winsms_api_key: true }),
+      });
+      if (res.ok) {
+        setSettings((prev: any) => ({
+          ...prev,
+          winsms_api_key: "",
+          winsms_api_key_configured: false,
+          winsms_api_key_masked: "",
+        }));
+        setSaveSuccess(true);
         fetchStatus();
         setTimeout(() => setSaveSuccess(false), 4000);
       }
@@ -208,13 +250,13 @@ export default function ParametresPage() {
       if (res.ok && data.success) {
         setTestResult({
           success: true,
-          message: `✓ SMS envoyé avec succès au ${data.phone} (${data.segments} segment${data.segments > 1 ? "s" : ""}). Solde restant : ${data.balance} SMS.`,
+          message: `✓ SMS envoyé avec succès au ${data.phone} (${data.segments} segment${data.segments > 1 ? "s" : ""}) via ${data.mode === "winsms" ? "WinSMS (Mode Réel)" : "Simulation"}. Solde restant : ${data.balance} SMS.`,
         });
         fetchStatus();
       } else {
         setTestResult({
           success: false,
-          message: `Erreur : ${data.error || "Échec de l'envoi."}`,
+          message: `Échec de l'envoi : ${data.error || "Une erreur est survenue lors de l'envoi."}`,
         });
       }
     } catch {
@@ -855,10 +897,10 @@ export default function ParametresPage() {
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                   <Zap className="w-5 h-5 text-indigo-500" />
-                  <span>Passerelle WinSMS Tunisie (Envoi direct par Internet)</span>
+                  <span>Service SMS (WinSMS Tunisie)</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Tous les SMS sont expédiés via l'API sécurisée WinSMS Tunisie sans aucun matériel ni modem GSM requis.
+                  Gestion centralisée de la passerelle SMS officielle (winsmspro.com) pour la notification des absences et des paiements.
                 </p>
               </div>
 
@@ -867,7 +909,7 @@ export default function ParametresPage() {
                 <button
                   onClick={fetchStatus}
                   disabled={refreshingStatus}
-                  className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 transition"
+                  className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 transition cursor-pointer"
                   title="Rafraîchir le solde"
                 >
                   <RefreshCw className={`w-4 h-4 ${refreshingStatus ? "animate-spin" : ""}`} />
@@ -884,15 +926,21 @@ export default function ParametresPage() {
                 </span>
               </div>
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
-                <span className="text-[11px] font-semibold text-slate-400 block">Fournisseur actif</span>
-                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase">
-                  {smsStatus?.provider || "mock"}
+                <span className="text-[11px] font-semibold text-slate-400 block">Mode de service</span>
+                <span className={`text-sm font-bold uppercase ${settings.sms_provider_mode === "winsms" ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                  {settings.sms_provider_mode === "winsms" ? "Mode Réel" : "Simulation"}
                 </span>
               </div>
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
-                <span className="text-[11px] font-semibold text-slate-400 block">Seuil d'alerte bas</span>
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                  {settings.sms_low_balance_threshold} SMS
+                <span className="text-[11px] font-semibold text-slate-400 block">Clé API WinSMS</span>
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                  {settings.winsms_api_key_configured ? (
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      ✓ {settings.winsms_api_key_masked}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">Non configurée</span>
+                  )}
                 </span>
               </div>
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
@@ -901,7 +949,7 @@ export default function ParametresPage() {
                   className={`text-sm font-bold ${
                     smsStatus?.lastSendStatus === "error"
                       ? "text-rose-600"
-                      : "text-emerald-600"
+                    : "text-emerald-600"
                   }`}
                 >
                   {smsStatus?.lastSendStatus === "error" ? "Erreur" : "Opérationnel"}
@@ -917,57 +965,143 @@ export default function ParametresPage() {
           </div>
 
           {/* Formulaire de configuration des identifiants WinSMS */}
-          <form onSubmit={handleSaveSettings} className="p-6 sm:p-8 rounded-3xl glass-card space-y-4">
-            <h3 className="font-bold text-base text-slate-900 dark:text-white">
-              Identifiants & Paramètres de l'API WinSMS
+          <form onSubmit={handleSaveSettings} className="p-6 sm:p-8 rounded-3xl glass-card space-y-6">
+            <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+              <Key className="w-4 h-4 text-indigo-500" />
+              <span>Configuration du Service SMS (WinSMS)</span>
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Sélecteur de Mode : Réel vs Simulation */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Mode de fonctionnement
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div
+                  onClick={() => setSettings({ ...settings, sms_provider_mode: "winsms" })}
+                  className={`p-4 rounded-2xl border cursor-pointer transition flex items-start gap-3 ${
+                    settings.sms_provider_mode === "winsms"
+                      ? "bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-500 text-indigo-900 dark:text-indigo-200 shadow-sm"
+                      : "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-600 dark:text-slate-400"
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                    settings.sms_provider_mode === "winsms" ? "border-indigo-600 bg-indigo-600" : "border-slate-400"
+                  }`}>
+                    {settings.sms_provider_mode === "winsms" && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+                  <div>
+                    <span className="font-bold text-sm block">Mode Réel (WinSMS Tunisie)</span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Les SMS sont réellement expédiés aux parents via l'API WinSMS. Débite du crédit sur votre compte.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setSettings({ ...settings, sms_provider_mode: "mock" })}
+                  className={`p-4 rounded-2xl border cursor-pointer transition flex items-start gap-3 ${
+                    settings.sms_provider_mode === "mock"
+                      ? "bg-amber-50/80 dark:bg-amber-950/40 border-amber-500 text-amber-900 dark:text-amber-200 shadow-sm"
+                      : "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-600 dark:text-slate-400"
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                    settings.sms_provider_mode === "mock" ? "border-amber-600 bg-amber-600" : "border-slate-400"
+                  }`}>
+                    {settings.sms_provider_mode === "mock" && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+                  <div>
+                    <span className="font-bold text-sm block">Mode Simulation (Hors ligne)</span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Envois simulés en local : aucun SMS réel n'est envoyé et aucun crédit n'est consommé (idéal pour les essais).
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Clé API WinSMS, Entête et URL */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              {/* Clé API */}
+              <div className="sm:col-span-2 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Clé API WinSMS (Secret Key)
+                  </label>
+                  {settings.winsms_api_key_configured && (
+                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Configurée : Oui ({settings.winsms_api_key_masked})</span>
+                    </span>
+                  )}
+                </div>
+                
+                <div className="relative flex items-center">
+                  <input
+                    type="password"
+                    placeholder={
+                      settings.winsms_api_key_configured
+                        ? "Laisser vide pour conserver la clé actuelle"
+                        : "Entrer la clé API WinSMS (ex: e4c8b2...)"
+                    }
+                    value={settings.winsms_api_key}
+                    onChange={(e) => setSettings({ ...settings, winsms_api_key: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  />
+                  {settings.winsms_api_key_configured && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteApiKey}
+                      className="absolute right-2 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                      title="Supprimer la clé API enregistrée"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Supprimer la clé</span>
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  La clé API est stockée chiffrée en base (AES-256-GCM) et n'est jamais transmise en clair au navigateur. Si ce champ est laissé vide lors de l'enregistrement, la clé existante est conservée.
+                </p>
+              </div>
+
+              {/* Sender ID */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Sender ID (Nom d'expéditeur officiel)
+                  Entête d'expéditeur (Sender ID)
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="ELIMTIAZ"
+                  placeholder="Lyc.Emtiyez"
                   value={settings.winsms_sender_id}
                   onChange={(e) => setSettings({ ...settings, winsms_sender_id: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  L'entête SMS unique validé auprès de WinSMS et des opérateurs tunisiens (ex: ELIMTIAZ).
+                  Nom d'expéditeur officiel validé par WinSMS et les opérateurs tunisiens (défaut : <code>Lyc.Emtiyez</code>).
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Clé API WinSMS (Secret Key)
-                </label>
-                <input
-                  type="password"
-                  placeholder="winsms_key_..."
-                  value={settings.winsms_api_key}
-                  onChange={(e) => setSettings({ ...settings, winsms_api_key: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Reste confidentielle côté serveur, jamais transmise au navigateur client.
-                </p>
-              </div>
-
+              {/* URL de l'API */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   URL de l'API WinSMS
                 </label>
                 <input
                   type="text"
+                  required
                   value={settings.winsms_api_url}
                   onChange={(e) => setSettings({ ...settings, winsms_api_url: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono"
                 />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Endpoint standard : <code>https://www.winsmspro.com/sms/sms/api</code>
+                </p>
               </div>
 
+              {/* Seuil d'alerte */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Seuil d'alerte crédit bas (en nombre de SMS)
@@ -987,6 +1121,7 @@ export default function ParametresPage() {
                 />
               </div>
 
+              {/* Délai entre deux envois */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Délai entre deux envois successifs (millisecondes)
@@ -1006,7 +1141,8 @@ export default function ParametresPage() {
                 />
               </div>
 
-              <div>
+              {/* Limite maximale journalière */}
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Limite maximale journalière (sécurité anti-débordement)
                 </label>
@@ -1020,7 +1156,7 @@ export default function ParametresPage() {
                       sms_daily_limit: parseInt(e.target.value, 10) || 500,
                     })
                   }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono"
+                  className="w-full max-w-sm px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-mono"
                 />
               </div>
             </div>
@@ -1037,14 +1173,15 @@ export default function ParametresPage() {
             </div>
           </form>
 
-          {/* Test d'envoi SMS en direct */}
+          {/* Test d'envoi SMS en direct ("Tester la connexion") */}
           <div className="p-6 sm:p-8 rounded-3xl glass-card space-y-4">
             <div>
-              <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                Test d'Envoi SMS en Direct
+              <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <Send className="w-4 h-4 text-emerald-500" />
+                <span>Tester la connexion WinSMS</span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Envoyez un message test vers votre propre numéro mobile tunisien pour valider la clé API et l'entête WinSMS.
+                Envoie un message test en arabe vers un numéro mobile tunisien pour valider immédiatement la clé API, l'entête et la connectivité réseau.
               </p>
             </div>
 
@@ -1077,7 +1214,7 @@ export default function ParametresPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Texte du message :
+                  Texte du message de test (Arabe) :
                 </label>
                 <input
                   type="text"
@@ -1094,7 +1231,7 @@ export default function ParametresPage() {
                 className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-colored-success flex items-center gap-2 cursor-pointer transition"
               >
                 {testingSms ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                <span>Envoyer le SMS de test</span>
+                <span>Tester la connexion (Envoi SMS)</span>
               </button>
             </form>
           </div>
