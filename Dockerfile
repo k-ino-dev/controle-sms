@@ -44,9 +44,10 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/prisma ./prisma
 COPY scripts ./scripts
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
+COPY docker-worker-entrypoint.sh ./docker-worker-entrypoint.sh
 
 # Permissions d'exécution
-RUN chmod +x ./docker-entrypoint.sh ./scripts/*.sh
+RUN chmod +x ./docker-entrypoint.sh ./docker-worker-entrypoint.sh ./scripts/*.sh
 
 EXPOSE 3000
 

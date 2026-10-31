@@ -43,6 +43,7 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    entrypoint: ["./docker-worker-entrypoint.sh"]
     command: ["npx", "tsx", "scripts/worker.ts"]
     environment:
       - DATABASE_URL=file:/app/data/dev.db

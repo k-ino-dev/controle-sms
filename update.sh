@@ -23,8 +23,8 @@ if command -v git >/dev/null 2>&1 && [ -d ".git" ]; then
 fi
 
 # 3. Rebuild et redémarrage propre des conteneurs
-echo "3. Reconstruction du conteneur d'application..."
-docker compose build --pull web
+echo "3. Reconstruction des conteneurs d'application..."
+docker compose build --pull
 
 echo "4. Relance des services avec zéro interruption..."
 docker compose up -d --remove-orphans

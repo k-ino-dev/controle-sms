@@ -40,7 +40,8 @@ Solution complète, moderne et hautement sécurisée de gestion d'établissement
 controle sms/
 ├── docker-compose.yml       # Déploiement VPS complet (Web + Caddy HTTPS auto)
 ├── Dockerfile               # Build Next.js multi-stage standalone
-├── docker-entrypoint.sh     # Migrations Prisma automatiques et démarrage
+├── docker-entrypoint.sh     # Migrations Prisma automatiques et démarrage du service web
+├── docker-worker-entrypoint.sh # Initialisation isolée et démarrage du worker SMS (sans contrôles web)
 ├── Caddyfile                # Reverse-proxy avec certificats SSL Let's Encrypt automatiques
 ├── update.sh                # Script de mise à jour sécurisée sur VPS (zéro perte de données)
 ├── .env.example             # Exemple des variables d'environnement
