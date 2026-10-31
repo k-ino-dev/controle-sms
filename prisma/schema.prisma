@@ -28,7 +28,7 @@ model Student {
   lastName    String
   parentPhone String
   level       String       // 7ème, 8ème, 9ème, 1ère, 2ème, 3ème, Bac
-  section     String?      // Informatique, Sciences, Lettres (2ème, 3ème, Bac)
+  section     String?      // Informatique, Lettres, Économie (2ème, 3ème, Bac)
   isArchived  Boolean      @default(false)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt

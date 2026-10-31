@@ -13,16 +13,28 @@ import {
   Loader2,
   AlertTriangle,
   GraduationCap,
+  Search,
+  Check,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import TouchSelect from "@/components/TouchSelect";
-
-const levels = ["7ème", "8ème", "9ème", "1ère", "2ème", "3ème", "Bac"];
-const sections = ["Informatique", "Sciences", "Lettres"];
+import LegacySectionBanner from "@/components/LegacySectionBanner";
+import {
+  LEVELS,
+  SECTIONS,
+  levelHasSection,
+  isLegacySection,
+} from "@/lib/sections";
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [legacyInfo, setLegacyInfo] = useState<any | null>(null);
+
+  // Filtres
+  const [search, setSearch] = useState("");
+  const [filterLevel, setFilterLevel] = useState("");
+  const [filterSection, setFilterSection] = useState("");
 
   // Modale Ajout de classe
   const [modalOpen, setModalOpen] = useState(false);
@@ -38,9 +50,13 @@ export default function ClassesPage() {
   const [selectedStudentToAdd, setSelectedStudentToAdd] = useState("");
   const [classDetailLoading, setClassDetailLoading] = useState(false);
 
-  // Renommer une classe
+  // Modifier / Renommer une classe
   const [editingClass, setEditingClass] = useState<any | null>(null);
-  const [newName, setNewName] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editLevel, setEditLevel] = useState("1ère");
+  const [editSection, setEditSection] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   const fetchClasses = async () => {
     setLoading(true);
@@ -55,8 +71,25 @@ export default function ClassesPage() {
     }
   };
 
-  useEffect(() => {
+  const fetchLegacyInfo = async () => {
+    try {
+      const res = await fetch("/api/sections/legacy");
+      const data = await res.json();
+      if (data.success) {
+        setLegacyInfo(data);
+      }
+    } catch (err) {
+      console.error("Erreur legacy info :", err);
+    }
+  };
+
+  const fetchAll = () => {
     fetchClasses();
+    fetchLegacyInfo();
+  };
+
+  useEffect(() => {
+    fetchAll();
   }, []);
 
   const openClassDetails = async (cls: any) => {
@@ -88,7 +121,7 @@ export default function ClassesPage() {
     setFormError(null);
 
     try {
-      const isSectionNeeded = ["2ème", "3ème", "Bac"].includes(formLevel);
+      const isSectionNeeded = levelHasSection(formLevel);
       const res = await fetch("/api/classes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -108,7 +141,7 @@ export default function ClassesPage() {
 
       setModalOpen(false);
       setFormCustomName("");
-      fetchClasses();
+      fetchAll();
     } catch {
       setFormError("Erreur serveur");
     } finally {
@@ -126,7 +159,7 @@ export default function ClassesPage() {
       });
       if (res.ok) {
         openClassDetails(activeClass);
-        fetchClasses();
+        fetchAll();
       }
     } catch (err) {
       console.error(err);
@@ -143,28 +176,61 @@ export default function ClassesPage() {
       });
       if (res.ok) {
         openClassDetails(activeClass);
-        fetchClasses();
+        fetchAll();
       }
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleRename = async () => {
-    if (!editingClass || !newName.trim()) return;
+  const openEditClassModal = (cls: any) => {
+    setEditingClass(cls);
+    setEditName(cls.name);
+    setEditLevel(cls.level);
+    setEditSection(isLegacySection(cls.section) ? "" : (cls.section || ""));
+    setEditError(null);
+  };
+
+  const handleUpdateClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClass) return;
+    setUpdating(true);
+    setEditError(null);
+
     try {
-      await fetch(`/api/classes/${editingClass.id}`, {
+      const isSectionNeeded = levelHasSection(editLevel);
+      const res = await fetch(`/api/classes/${editingClass.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim() }),
+        body: JSON.stringify({
+          name: editName.trim() || undefined,
+          level: editLevel,
+          section: isSectionNeeded ? editSection : null,
+          updateStudents: true,
+        }),
       });
-      setEditingClass(null);
-      fetchClasses();
-      if (activeClass?.id === editingClass.id) {
-        setActiveClass((prev: any) => ({ ...prev, name: newName.trim() }));
+
+      const data = await res.json();
+      if (!res.ok) {
+        setEditError(data.error || "Erreur lors de la mise à jour");
+        setUpdating(false);
+        return;
       }
-    } catch (err) {
-      console.error(err);
+
+      setEditingClass(null);
+      fetchAll();
+      if (activeClass?.id === editingClass.id) {
+        setActiveClass((prev: any) => ({
+          ...prev,
+          name: data.class?.name || editName.trim(),
+          level: editLevel,
+          section: isSectionNeeded ? editSection : null,
+        }));
+      }
+    } catch {
+      setEditError("Erreur serveur lors de la mise à jour");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -173,16 +239,40 @@ export default function ClassesPage() {
     try {
       await fetch(`/api/classes/${id}`, { method: "DELETE" });
       if (activeClass?.id === id) setActiveClass(null);
-      fetchClasses();
+      fetchAll();
     } catch (err) {
       console.error(err);
     }
   };
 
-  const isSectionAllowed = ["2ème", "3ème", "Bac"].includes(formLevel);
+  const isFormSectionAllowed = levelHasSection(formLevel);
+  const isEditSectionAllowed = levelHasSection(editLevel);
+
+  // Filtrer les classes affichées
+  const filteredClasses = classes.filter((cls) => {
+    if (filterLevel && cls.level !== filterLevel) return false;
+    if (filterSection) {
+      if (filterSection === "needs_update") {
+        if (!isLegacySection(cls.section)) return false;
+      } else if (cls.section !== filterSection) {
+        return false;
+      }
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      const matchName = cls.name?.toLowerCase().includes(q);
+      const matchLevel = cls.level?.toLowerCase().includes(q);
+      const matchSection = cls.section?.toLowerCase().includes(q);
+      if (!matchName && !matchLevel && !matchSection) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6 pb-28 md:pb-8">
+      {/* BANDEAU SI SCIENCES DÉTECTÉ */}
+      <LegacySectionBanner legacyInfo={legacyInfo} onSuccess={fetchAll} />
+
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -211,84 +301,140 @@ export default function ClassesPage() {
         </motion.button>
       </div>
 
+      {/* Barre de recherche et filtres */}
+      <div className="p-4 rounded-3xl glass-card space-y-3">
+        <div className="flex flex-col md:flex-row items-center gap-3">
+          <div className="relative flex-1 w-full">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher une classe..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-sm focus:outline-none"
+            />
+          </div>
+
+          <div className="w-full md:w-44">
+            <TouchSelect
+              title="Filtrer par niveau"
+              value={filterLevel}
+              onChange={setFilterLevel}
+              placeholder="Tous les niveaux"
+              options={[
+                { value: "", label: "Tous les niveaux" },
+                ...LEVELS.map((lvl) => ({ value: lvl, label: lvl })),
+              ]}
+            />
+          </div>
+
+          <div className="w-full md:w-48">
+            <TouchSelect
+              title="Filtrer par section"
+              value={filterSection}
+              onChange={setFilterSection}
+              placeholder="Toutes sections"
+              options={[
+                { value: "", label: "Toutes sections" },
+                ...SECTIONS.map((sec) => ({ value: sec, label: sec })),
+                ...(legacyInfo?.classesCount ? [{ value: "needs_update", label: "À mettre à jour" }] : []),
+              ]}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Grille des classes */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
         </div>
-      ) : classes.length === 0 ? (
+      ) : filteredClasses.length === 0 ? (
         <div className="p-12 text-center rounded-3xl glass-card">
           <School className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
-            Aucune classe créée
+            {classes.length === 0 ? "Aucune classe créée" : "Aucune classe trouvée pour ces critères"}
           </h3>
           <p className="text-xs text-slate-400 mt-1">
-            Cliquez sur "Ajouter une classe" pour commencer.
+            {classes.length === 0
+              ? "Cliquez sur 'Ajouter une classe' pour commencer."
+              : "Modifiez vos filtres ou réinitialisez la recherche."}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {classes.map((cls, idx) => (
-            <motion.div
-              key={cls.id}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.04 }}
-              className="p-5 rounded-3xl glass-card hover:shadow-colored-primary hover:-translate-y-0.5 transition-all flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-                      <School className="w-5 h-5" />
+          {filteredClasses.map((cls, idx) => {
+            const hasLegacy = isLegacySection(cls.section);
+
+            return (
+              <motion.div
+                key={cls.id}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.04 }}
+                className={`p-5 rounded-3xl glass-card hover:shadow-colored-primary hover:-translate-y-0.5 transition-all flex flex-col justify-between ${
+                  hasLegacy ? "border-amber-500/40 bg-amber-500/5 dark:bg-amber-950/10" : ""
+                }`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
+                        <School className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <h4 className="font-bold text-base text-slate-900 dark:text-white truncate">
+                            {cls.name}
+                          </h4>
+                          {hasLegacy && (
+                            <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 shrink-0">
+                              <AlertTriangle className="w-3 h-3 text-amber-500" />
+                              <span>Section à mettre à jour</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          {cls.level} {cls.section ? `• ${cls.section}` : ""}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-base text-slate-900 dark:text-white">
-                        {cls.name}
-                      </h4>
-                      <p className="text-xs text-slate-400">
-                        {cls.level} {cls.section ? `• ${cls.section}` : ""}
-                      </p>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => openEditClassModal(cls)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        title="Modifier / Renommer"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClass(cls.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 transition"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        setEditingClass(cls);
-                        setNewName(cls.name);
-                      }}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                      title="Renommer"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteClass(cls.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 transition"
-                      title="Supprimer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center gap-2 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    <Users className="w-4 h-4 text-indigo-500" />
+                    <span>{cls.enrollments?.length || 0} élève(s) inscrit(s)</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  <Users className="w-4 h-4 text-indigo-500" />
-                  <span>{cls.enrollments?.length || 0} élève(s) inscrit(s)</span>
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
+                  <button
+                    onClick={() => openClassDetails(cls)}
+                    className="w-full py-2 px-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 font-bold text-xs transition text-center"
+                  >
+                    Gérer les élèves de la classe
+                  </button>
                 </div>
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
-                <button
-                  onClick={() => openClassDetails(cls)}
-                  className="w-full py-2 px-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 font-bold text-xs transition text-center"
-                >
-                  Gérer les élèves de la classe
-                </button>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       )}
 
@@ -315,7 +461,7 @@ export default function ClassesPage() {
               </div>
 
               {formError && (
-                <div className="mb-4 p-3 rounded-xl bg-rose-500/10 text-rose-600 text-xs">
+                <div className="mb-4 p-3 rounded-xl bg-rose-500/10 text-rose-600 text-xs font-semibold">
                   {formError}
                 </div>
               )}
@@ -330,16 +476,16 @@ export default function ClassesPage() {
                     value={formLevel}
                     onChange={(val) => {
                       setFormLevel(val);
-                      if (!["2ème", "3ème", "Bac"].includes(val)) {
+                      if (!levelHasSection(val)) {
                         setFormSection("");
                       }
                     }}
-                    options={levels.map((lvl) => ({ value: lvl, label: lvl }))}
+                    options={LEVELS.map((lvl) => ({ value: lvl, label: lvl }))}
                   />
                 </div>
 
                 <AnimatePresence>
-                  {isSectionAllowed && (
+                  {isFormSectionAllowed && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
@@ -355,7 +501,7 @@ export default function ClassesPage() {
                         placeholder="Sélectionner une section..."
                         options={[
                           { value: "", label: "Sélectionner une section..." },
-                          ...sections.map((sec) => ({ value: sec, label: sec })),
+                          ...SECTIONS.map((sec) => ({ value: sec, label: sec })),
                         ]}
                       />
                     </motion.div>
@@ -374,7 +520,7 @@ export default function ClassesPage() {
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
                   />
                   <p className="text-[11px] text-slate-400 mt-1">
-                    Si laissé vide, le système incrémente automatiquement le numéro de classe.
+                    Si laissé vide, le système numérote automatiquement la classe par combinaison niveau + section.
                   </p>
                 </div>
 
@@ -389,10 +535,126 @@ export default function ClassesPage() {
                   <button
                     type="submit"
                     disabled={creating}
-                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-colored-primary flex items-center gap-1.5"
+                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-colored-primary flex items-center gap-1.5 cursor-pointer"
                   >
                     {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     <span>Créer la classe</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL MODIFIER / RENOMMER UNE CLASSE */}
+      <AnimatePresence>
+        {editingClass && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md p-6 rounded-3xl glass-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90dvh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-base text-slate-900 dark:text-white">
+                    Modifier la classe
+                  </h4>
+                  {isLegacySection(editingClass.section) && (
+                    <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                      Sciences ➔ À mettre à jour
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setEditingClass(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {editError && (
+                <div className="mb-4 p-3 rounded-xl bg-rose-500/10 text-rose-600 text-xs font-semibold">
+                  {editError}
+                </div>
+              )}
+
+              <form onSubmit={handleUpdateClass} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Niveau
+                  </label>
+                  <TouchSelect
+                    title="Niveau"
+                    value={editLevel}
+                    onChange={(val) => {
+                      setEditLevel(val);
+                      if (!levelHasSection(val)) {
+                        setEditSection("");
+                      }
+                    }}
+                    options={LEVELS.map((lvl) => ({ value: lvl, label: lvl }))}
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {isEditSectionAllowed && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Section (choix autorisés : Informatique, Lettres, Économie)
+                      </label>
+                      <TouchSelect
+                        title="Section autorisée"
+                        value={editSection}
+                        onChange={(val) => setEditSection(val)}
+                        placeholder="Choisir une section..."
+                        options={[
+                          { value: "", label: "Choisir une section..." },
+                          ...SECTIONS.map((sec) => ({ value: sec, label: sec })),
+                        ]}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Nom de la classe
+                  </label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Si le nom est séquentiel automatique (ex: "3ème Sciences classe 1"), il sera automatiquement actualisé vers la nouvelle section.
+                  </p>
+                </div>
+
+                <div className="flex gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setEditingClass(null)}
+                    disabled={updating}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updating}
+                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-colored-primary flex items-center justify-center gap-1.5"
+                  >
+                    {updating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Enregistrer</span>
                   </button>
                 </div>
               </form>
@@ -415,10 +677,18 @@ export default function ClassesPage() {
               <div>
                 <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
                   <div>
-                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                      {activeClass.name}
-                    </h3>
-                    <p className="text-xs text-slate-400">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                        {activeClass.name}
+                      </h3>
+                      {isLegacySection(activeClass.section) && (
+                        <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-amber-500" />
+                          <span>Section à mettre à jour</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
                       {activeClass.level} {activeClass.section ? `• ${activeClass.section}` : ""} &bull;{" "}
                       {activeClass.enrollments?.length || 0} élève(s)
                     </p>
@@ -478,74 +748,47 @@ export default function ClassesPage() {
                       Aucun élève dans cette classe.
                     </p>
                   ) : (
-                    activeClass.enrollments.map((en: any) => (
-                      <div
-                        key={en.id}
-                        className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 font-bold flex items-center justify-center text-xs">
-                            {en.student?.lastName[0]}
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-900 dark:text-white">
-                              {en.student?.lastName} {en.student?.firstName}
-                            </div>
-                            <div className="text-slate-400 font-mono text-[11px]">
-                              {en.student?.parentPhone}
-                            </div>
-                          </div>
-                        </div>
+                    activeClass.enrollments.map((en: any) => {
+                      const studentHasLegacy = isLegacySection(en.student?.section);
 
-                        <button
-                          onClick={() => handleRemoveStudent(en.studentId)}
-                          className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                          title="Retirer de la classe"
+                      return (
+                        <div
+                          key={en.id}
+                          className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs"
                         >
-                          <UserMinus className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 font-bold flex items-center justify-center text-xs">
+                              {en.student?.lastName[0]}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-slate-900 dark:text-white">
+                                  {en.student?.lastName} {en.student?.firstName}
+                                </span>
+                                {studentHasLegacy && (
+                                  <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 border border-amber-500/30 text-[10px] font-bold">
+                                    À mettre à jour
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-slate-400 font-mono text-[11px]">
+                                {en.student?.parentPhone}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleRemoveStudent(en.studentId)}
+                            className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer"
+                            title="Retirer de la classe"
+                          >
+                            <UserMinus className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL RENOMMER */}
-      <AnimatePresence>
-        {editingClass && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-sm p-6 rounded-3xl glass-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
-            >
-              <h4 className="font-bold text-base text-slate-900 dark:text-white mb-3">
-                Renommer la classe
-              </h4>
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm mb-4"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setEditingClass(null)}
-                  className="flex-1 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={handleRename}
-                  className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
-                >
-                  Enregistrer
-                </button>
               </div>
             </motion.div>
           </div>

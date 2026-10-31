@@ -26,7 +26,11 @@ export async function GET(req: NextRequest) {
     }
 
     if (section) {
-      whereClause.section = section;
+      if (section === "needs_update" || section === "Sciences") {
+        whereClause.section = "Sciences";
+      } else {
+        whereClause.section = section;
+      }
     }
 
     if (search) {
@@ -88,7 +92,22 @@ export async function POST(req: NextRequest) {
     }
 
     const { firstName, lastName, parentPhone, level, section, classId } = parsed.data;
+    const effectiveSection = ["2ème", "3ème", "Bac"].includes(level) ? (section || null) : null;
     const cleanedPhone = cleanTunisianPhone(parentPhone);
+
+    // Vérifier la cohérence de niveau et section si une classe est choisie
+    if (classId) {
+      const targetClass = await prisma.class.findUnique({ where: { id: classId } });
+      if (!targetClass) {
+        return NextResponse.json({ error: "Classe introuvable" }, { status: 404 });
+      }
+      if (targetClass.level !== level || targetClass.section !== effectiveSection) {
+        return NextResponse.json(
+          { error: "Le niveau ou la section de l'élève ne correspond pas à cette classe" },
+          { status: 400 }
+        );
+      }
+    }
 
     const student = await prisma.student.create({
       data: {
@@ -96,7 +115,7 @@ export async function POST(req: NextRequest) {
         lastName,
         parentPhone: cleanedPhone,
         level,
-        section: section || null,
+        section: effectiveSection,
         ...(classId
           ? {
               enrollments: {

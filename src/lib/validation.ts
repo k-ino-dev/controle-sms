@@ -15,21 +15,15 @@ export function cleanTunisianPhone(raw: string): string {
 
 export const tunisianPhoneRegex = /^(\+216|00216)?[234579]\d{7}$/;
 
-export const validLevels = [
-  "7ème",
-  "8ème",
-  "9ème",
-  "1ère",
-  "2ème",
-  "3ème",
-  "Bac",
-] as const;
+import {
+  LEVELS,
+  SECTIONS,
+  levelHasSection,
+  isValidSection,
+} from "./sections";
 
-export const validSections = [
-  "Informatique",
-  "Sciences",
-  "Lettres",
-] as const;
+export const validLevels = LEVELS;
+export const validSections = SECTIONS;
 
 export const schoolMonths = [
   "octobre",
@@ -58,48 +52,73 @@ export const studentSchema = z
         tunisianPhoneRegex,
         "Numéro invalide. Format attendu : 8 chiffres (ex: 98123456 ou +21698123456)"
       ),
-    level: z.enum(validLevels, {
+    level: z.enum(LEVELS, {
       errorMap: () => ({ message: "Veuillez sélectionner un niveau valide" }),
     }),
-    section: z.enum(validSections).nullable().optional(),
+    section: z.string().nullable().optional(),
     classId: z.string().optional(),
   })
-  .refine(
-    (data) => {
-      // Les sections ne sont autorisées/obligatoires que pour 2ème, 3ème et Bac
-      const requiresSection = ["2ème", "3ème", "Bac"].includes(data.level);
-      if (requiresSection) {
-        return !!data.section;
+  .superRefine((data, ctx) => {
+    const hasSection = levelHasSection(data.level);
+    if (hasSection) {
+      if (!data.section || !data.section.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "La section est obligatoire pour la 2ème, 3ème et le Bac (choix : Informatique, Lettres, Économie)",
+          path: ["section"],
+        });
+      } else if (!isValidSection(data.section)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Section invalide. Les sections autorisées sont : Informatique, Lettres et Économie.",
+          path: ["section"],
+        });
       }
-      return true;
-    },
-    {
-      message: "La section est obligatoire pour la 2ème, 3ème et le Bac",
-      path: ["section"],
+    } else {
+      if (data.section && data.section.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Les sections ne sont pas autorisées pour les niveaux 7ème, 8ème, 9ème et 1ère.",
+          path: ["section"],
+        });
+      }
     }
-  );
+  });
 
 export const classSchema = z
   .object({
     name: z.string().optional(),
-    level: z.enum(validLevels, {
+    level: z.enum(LEVELS, {
       errorMap: () => ({ message: "Veuillez sélectionner un niveau valide" }),
     }),
-    section: z.enum(validSections).nullable().optional(),
+    section: z.string().nullable().optional(),
   })
-  .refine(
-    (data) => {
-      const requiresSection = ["2ème", "3ème", "Bac"].includes(data.level);
-      if (requiresSection) {
-        return !!data.section;
+  .superRefine((data, ctx) => {
+    const hasSection = levelHasSection(data.level);
+    if (hasSection) {
+      if (!data.section || !data.section.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "La section est obligatoire pour la 2ème, 3ème et le Bac (choix : Informatique, Lettres, Économie)",
+          path: ["section"],
+        });
+      } else if (!isValidSection(data.section)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Section invalide. Les sections autorisées sont : Informatique, Lettres et Économie.",
+          path: ["section"],
+        });
       }
-      return true;
-    },
-    {
-      message: "La section est obligatoire pour la 2ème, 3ème et le Bac",
-      path: ["section"],
+    } else {
+      if (data.section && data.section.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Les sections ne sont pas autorisées pour les niveaux 7ème, 8ème, 9ème et 1ère.",
+          path: ["section"],
+        });
+      }
     }
-  );
+  });
 
 export const absenceSubmissionSchema = z.object({
   classId: z.string().min(1, "Classe requise"),

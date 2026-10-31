@@ -13,6 +13,7 @@ import {
   Calendar,
   Sparkles,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
@@ -21,6 +22,7 @@ import { schoolMonths } from "@/lib/validation";
 import { PaymentReceiptModal, ReceiptData } from "@/components/PaymentReceiptModal";
 import { PaymentSmsModal } from "@/components/PaymentSmsModal";
 import { TouchSelect } from "@/components/TouchSelect";
+import { SECTIONS, isLegacySection } from "@/lib/sections";
 
 const monthLabelsShort: Record<string, string> = {
   octobre: "Oct",
@@ -47,6 +49,8 @@ export default function PaiementsPage() {
   const [search, setSearch] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("");
+  const [selectedSection, setSelectedSection] = useState("");
+  const [hasLegacyStudents, setHasLegacyStudents] = useState(false);
 
   // Modale de saisie de paiement
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -91,6 +95,7 @@ export default function PaiementsPage() {
       if (search) params.set("search", search);
       if (selectedClassId) params.set("classId", selectedClassId);
       if (selectedLevel) params.set("level", selectedLevel);
+      if (selectedSection) params.set("section", selectedSection);
 
       const res = await fetch(`/api/paiements?${params.toString()}`);
       const data = await res.json();
@@ -100,6 +105,18 @@ export default function PaiementsPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLegacyInfo = async () => {
+    try {
+      const res = await fetch("/api/sections/legacy");
+      const data = await res.json();
+      if (data.success) {
+        setHasLegacyStudents(data.studentsCount > 0);
+      }
+    } catch (err) {
+      console.error("Erreur legacy info :", err);
     }
   };
 
@@ -127,11 +144,12 @@ export default function PaiementsPage() {
 
   useEffect(() => {
     fetchPayments();
-  }, [search, selectedClassId, selectedLevel]);
+  }, [search, selectedClassId, selectedLevel, selectedSection]);
 
   useEffect(() => {
     fetchClasses();
     fetchSettings();
+    fetchLegacyInfo();
   }, []);
 
   const openPaymentModal = (student: any, month: string) => {
@@ -369,6 +387,20 @@ export default function PaiementsPage() {
             ]}
           />
         </div>
+
+        <div className="w-full md:w-48">
+          <TouchSelect
+            title="Filtrer par section"
+            value={selectedSection}
+            onChange={setSelectedSection}
+            placeholder="Toutes sections"
+            options={[
+              { value: "", label: "Toutes sections" },
+              ...SECTIONS.map((sec) => ({ value: sec, label: sec })),
+              ...(hasLegacyStudents ? [{ value: "needs_update", label: "À mettre à jour" }] : []),
+            ]}
+          />
+        </div>
       </div>
 
       {/* Table / Grille des Paiements */}
@@ -396,19 +428,32 @@ export default function PaiementsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {students.map((st) => (
-            <div
-              key={st.id}
-              className="p-5 rounded-3xl glass-card hover:shadow-subtle transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-            >
-              {/* Infos Élève */}
-              <div className="min-w-[200px]">
-                <div className="font-bold text-base text-slate-900 dark:text-white">
-                  {st.lastName} {st.firstName}
-                </div>
-                <div className="text-xs text-slate-400 mt-0.5">
-                  {st.className} &bull; {st.level}
-                </div>
+          {students.map((st) => {
+            const hasLegacy = isLegacySection(st.section);
+
+            return (
+              <div
+                key={st.id}
+                className={`p-5 rounded-3xl glass-card hover:shadow-subtle transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+                  hasLegacy ? "border-amber-500/40 bg-amber-500/5 dark:bg-amber-950/10" : ""
+                }`}
+              >
+                {/* Infos Élève */}
+                <div className="min-w-[200px]">
+                  <div className="font-bold text-base text-slate-900 dark:text-white">
+                    {st.lastName} {st.firstName}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400 mt-0.5">
+                    <span>
+                      {st.className} &bull; {st.level} {st.section ? `• ${st.section}` : ""}
+                    </span>
+                    {hasLegacy && (
+                      <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 shrink-0">
+                        <AlertTriangle className="w-3 h-3 text-amber-500" />
+                        <span>Section à mettre à jour</span>
+                      </span>
+                    )}
+                  </div>
                 <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 mt-1">
                   Total : <span className="text-emerald-600 font-bold">{formatCurrency(st.totalPaid)}</span> / {formatCurrency(st.annualTotal)}
                   {st.remaining > 0 && (
@@ -477,7 +522,8 @@ export default function PaiementsPage() {
                 })}
               </div>
             </div>
-          ))}
+          );
+        })}
         </div>
       )}
 

@@ -25,14 +25,19 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { TouchSelect } from "@/components/TouchSelect";
-
-const levels = ["7ème", "8ème", "9ème", "1ère", "2ème", "3ème", "Bac"];
-const sections = ["Informatique", "Sciences", "Lettres"];
+import LegacySectionBanner from "@/components/LegacySectionBanner";
+import {
+  LEVELS,
+  SECTIONS,
+  levelHasSection,
+  isLegacySection,
+} from "@/lib/sections";
 
 export default function ElevesPage() {
   const [students, setStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [legacyInfo, setLegacyInfo] = useState<any | null>(null);
   const [search, setSearch] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("");
   const [selectedSection, setSelectedSection] = useState("");
@@ -77,6 +82,18 @@ export default function ElevesPage() {
     }
   };
 
+  const fetchLegacyInfo = async () => {
+    try {
+      const res = await fetch("/api/sections/legacy");
+      const data = await res.json();
+      if (data.success) {
+        setLegacyInfo(data);
+      }
+    } catch (err) {
+      console.error("Erreur legacy info :", err);
+    }
+  };
+
   const fetchClasses = async () => {
     try {
       const res = await fetch("/api/classes");
@@ -87,12 +104,19 @@ export default function ElevesPage() {
     }
   };
 
+  const fetchAll = () => {
+    fetchStudents();
+    fetchClasses();
+    fetchLegacyInfo();
+  };
+
   useEffect(() => {
     fetchStudents();
   }, [search, selectedLevel, selectedSection, showArchived]);
 
   useEffect(() => {
     fetchClasses();
+    fetchLegacyInfo();
   }, []);
 
   const openAddModal = () => {
@@ -113,7 +137,7 @@ export default function ElevesPage() {
     setFormLastName(st.lastName);
     setFormPhone(st.parentPhone);
     setFormLevel(st.level);
-    setFormSection(st.section || "");
+    setFormSection(isLegacySection(st.section) ? "" : (st.section || ""));
     setFormClassId(st.enrollments[0]?.classId || "");
     setFormError(null);
     setModalOpen(true);
@@ -146,7 +170,7 @@ export default function ElevesPage() {
         lastName: formLastName,
         parentPhone: formPhone,
         level: formLevel,
-        section: ["2ème", "3ème", "Bac"].includes(formLevel) ? formSection : null,
+        section: levelHasSection(formLevel) ? formSection : null,
         classId: formClassId || undefined,
       };
 
@@ -167,7 +191,7 @@ export default function ElevesPage() {
       }
 
       setModalOpen(false);
-      fetchStudents();
+      fetchAll();
     } catch {
       setFormError("Erreur de connexion");
     } finally {
@@ -178,7 +202,7 @@ export default function ElevesPage() {
   const toggleArchive = async (id: string) => {
     try {
       await fetch(`/api/eleves/${id}/archive`, { method: "POST" });
-      fetchStudents();
+      fetchAll();
       if (detailStudent?.id === id) {
         setDetailStudent(null);
       }
@@ -191,7 +215,7 @@ export default function ElevesPage() {
     try {
       await fetch(`/api/eleves/${id}`, { method: "DELETE" });
       setDeleteConfirmId(null);
-      fetchStudents();
+      fetchAll();
       if (detailStudent?.id === id) {
         setDetailStudent(null);
       }
@@ -201,7 +225,7 @@ export default function ElevesPage() {
   };
 
   // Section visible seulement pour 2ème, 3ème, Bac
-  const isSectionAllowed = ["2ème", "3ème", "Bac"].includes(formLevel);
+  const isSectionAllowed = levelHasSection(formLevel);
 
   // Filtrer les classes compatibles avec le niveau sélectionné dans le formulaire
   const filteredFormClasses = classes.filter(
@@ -210,6 +234,8 @@ export default function ElevesPage() {
 
   return (
     <div className="space-y-6 pb-28 md:pb-8">
+      {/* BANDEAU SI SCIENCES DÉTECTÉ */}
+      <LegacySectionBanner legacyInfo={legacyInfo} onSuccess={fetchAll} />
       {/* En-tête et bouton Ajouter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -282,7 +308,7 @@ export default function ElevesPage() {
               placeholder="Tous les niveaux"
               options={[
                 { value: "", label: "Tous les niveaux" },
-                ...levels.map((lvl) => ({ value: lvl, label: lvl })),
+                ...LEVELS.map((lvl) => ({ value: lvl, label: lvl })),
               ]}
             />
           </div>
@@ -296,7 +322,8 @@ export default function ElevesPage() {
               placeholder="Toutes sections"
               options={[
                 { value: "", label: "Toutes sections" },
-                ...sections.map((sec) => ({ value: sec, label: sec })),
+                ...SECTIONS.map((sec) => ({ value: sec, label: sec })),
+                ...(legacyInfo?.studentsCount ? [{ value: "needs_update", label: "À mettre à jour" }] : []),
               ]}
             />
           </div>
@@ -335,6 +362,7 @@ export default function ElevesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {students.map((st, idx) => {
             const currentClass = st.enrollments[0]?.class?.name || "Non affecté";
+            const hasLegacy = isLegacySection(st.section);
 
             return (
               <motion.div
@@ -342,7 +370,9 @@ export default function ElevesPage() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.03, duration: 0.25 }}
-                className="p-5 rounded-3xl glass-card hover:shadow-colored-primary hover:-translate-y-0.5 transition-all relative group flex flex-col justify-between"
+                className={`p-5 rounded-3xl glass-card hover:shadow-colored-primary hover:-translate-y-0.5 transition-all relative group flex flex-col justify-between ${
+                  hasLegacy ? "border-amber-500/40 bg-amber-500/5 dark:bg-amber-950/10" : ""
+                }`}
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -353,11 +383,17 @@ export default function ElevesPage() {
                       >
                         {st.lastName} {st.firstName}
                       </h4>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-0.5">
                         <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
                         <span>
                           {st.level} {st.section ? `• ${st.section}` : ""}
                         </span>
+                        {hasLegacy && (
+                          <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 shrink-0">
+                            <AlertTriangle className="w-3 h-3 text-amber-500" />
+                            <span>Section à mettre à jour</span>
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -512,11 +548,11 @@ export default function ElevesPage() {
                       value={formLevel}
                       onChange={(val) => {
                         setFormLevel(val);
-                        if (!["2ème", "3ème", "Bac"].includes(val)) {
+                        if (!levelHasSection(val)) {
                           setFormSection("");
                         }
                       }}
-                      options={levels.map((lvl) => ({ value: lvl, label: lvl }))}
+                      options={LEVELS.map((lvl) => ({ value: lvl, label: lvl }))}
                     />
                   </div>
 
@@ -539,7 +575,7 @@ export default function ElevesPage() {
                           placeholder="Choisir section..."
                           options={[
                             { value: "", label: "Choisir section..." },
-                            ...sections.map((sec) => ({ value: sec, label: sec })),
+                            ...SECTIONS.map((sec) => ({ value: sec, label: sec })),
                           ]}
                         />
                       </motion.div>
@@ -574,7 +610,7 @@ export default function ElevesPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-colored-primary transition disabled:opacity-50 flex items-center gap-1.5"
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-colored-primary transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                   >
                     {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     <span>{editingStudent ? "Enregistrer" : "Créer l'élève"}</span>
@@ -608,9 +644,17 @@ export default function ElevesPage() {
                       <h3 className="text-xl font-bold text-slate-900 dark:text-white">
                         {detailStudent.lastName} {detailStudent.firstName}
                       </h3>
-                      <p className="text-xs text-slate-400">
-                        {detailStudent.level} {detailStudent.section ? `• ${detailStudent.section}` : ""}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                        <p className="text-xs text-slate-400">
+                          {detailStudent.level} {detailStudent.section ? `• ${detailStudent.section}` : ""}
+                        </p>
+                        {isLegacySection(detailStudent.section) && (
+                          <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 text-amber-500" />
+                            <span>Section à mettre à jour</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <button

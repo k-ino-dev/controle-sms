@@ -35,6 +35,18 @@ fi
 # 2. Création des répertoires de données persistants sur les volumes
 mkdir -p /app/data /app/data/uploads /app/data/backups
 
+# 2.5 Sauvegarde automatique datée pré-migration si la base de données existe déjà
+DB_FILE="/app/data/dev.db"
+if [ -f "$DB_FILE" ]; then
+  PRE_MIG_DATE=$(date +'%Y-%m-%d_%H-%M-%S')
+  echo "💾 Sauvegarde automatique datée pré-migration de la base SQLite..."
+  if [ -f "./scripts/backup.sh" ]; then
+    DATABASE_URL="file:$DB_FILE" BACKUPS_DIR="/app/data/backups" sh ./scripts/backup.sh || cp "$DB_FILE" "/app/data/backups/ecole_backup_${PRE_MIG_DATE}.db"
+  else
+    cp "$DB_FILE" "/app/data/backups/ecole_backup_${PRE_MIG_DATE}.db"
+  fi
+fi
+
 # 3. Synchronisation du schéma SQLite (offline, sans téléchargement)
 echo "📦 Synchronisation de la base de données SQLite..."
 npx prisma db push --skip-generate

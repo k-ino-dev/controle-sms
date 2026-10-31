@@ -35,7 +35,13 @@ export async function GET(req: NextRequest) {
     const andConditions: any[] = [{ isArchived: false }];
 
     if (level) andConditions.push({ level });
-    if (section) andConditions.push({ section });
+    if (section) {
+      if (section === "needs_update" || section === "Sciences") {
+        andConditions.push({ section: "Sciences" });
+      } else {
+        andConditions.push({ section });
+      }
+    }
     if (classId) {
       // Filtrer par classe en utilisant l'identifiant de la classe (avec tolérance si le nom est transmis)
       andConditions.push({

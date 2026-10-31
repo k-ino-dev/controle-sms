@@ -81,7 +81,22 @@ export async function PUT(
     }
 
     const { firstName, lastName, parentPhone, level, section, classId } = parsed.data;
+    const effectiveSection = ["2ème", "3ème", "Bac"].includes(level) ? (section || null) : null;
     const cleanedPhone = cleanTunisianPhone(parentPhone);
+
+    // Vérifier la compatibilité de classe si une affectation est demandée
+    if (classId) {
+      const targetClass = await prisma.class.findUnique({ where: { id: classId } });
+      if (!targetClass) {
+        return NextResponse.json({ error: "Classe introuvable" }, { status: 404 });
+      }
+      if (targetClass.level !== level || targetClass.section !== effectiveSection) {
+        return NextResponse.json(
+          { error: "Le niveau ou la section de l'élève ne correspond pas à cette classe" },
+          { status: 400 }
+        );
+      }
+    }
 
     // Mettre à jour l'élève
     const updated = await prisma.student.update({
@@ -91,7 +106,7 @@ export async function PUT(
         lastName,
         parentPhone: cleanedPhone,
         level,
-        section: section || null,
+        section: effectiveSection,
       },
     });
 
@@ -109,6 +124,18 @@ export async function PUT(
             classId,
           },
         });
+      }
+    } else {
+      // Si classId non spécifié mais que le niveau ou la section a changé,
+      // vérifier et retirer de toute classe devenue incompatible
+      const existingEnrollments = await prisma.enrollment.findMany({
+        where: { studentId: params.id },
+        include: { class: true },
+      });
+      for (const en of existingEnrollments) {
+        if (en.class.level !== level || en.class.section !== effectiveSection) {
+          await prisma.enrollment.delete({ where: { id: en.id } });
+        }
       }
     }
 

@@ -125,7 +125,7 @@ async function main() {
   const classesData = [
     { name: "7ème classe 1", level: "7ème", section: null },
     { name: "1ère classe 1", level: "1ère", section: null },
-    { name: "2ème Sciences classe 1", level: "2ème", section: "Sciences" },
+    { name: "2ème Économie classe 1", level: "2ème", section: "Économie" },
     { name: "Bac Informatique classe 1", level: "Bac", section: "Informatique" },
   ];
 
@@ -152,11 +152,11 @@ async function main() {
     { firstName: "Ahmed", lastName: "Chahed", phone: "28556677", level: "1ère", section: null, classIdx: 1 },
     { firstName: "Salma", lastName: "Bouslama", phone: "99667788", level: "1ère", section: null, classIdx: 1 },
 
-    { firstName: "Skander", lastName: "Dridi", phone: "97123456", level: "2ème", section: "Sciences", classIdx: 2 },
-    { firstName: "Ines", lastName: "Mansour", phone: "55789012", level: "2ème", section: "Sciences", classIdx: 2 },
-    { firstName: "Mohamed", lastName: "Jlassi", phone: "21345678", level: "2ème", section: "Sciences", classIdx: 2 },
-    { firstName: "Eya", lastName: "Riahi", phone: "29901234", level: "2ème", section: "Sciences", classIdx: 2 },
-    { firstName: "Farouk", lastName: "Karray", phone: "96543210", level: "2ème", section: "Sciences", classIdx: 2 },
+    { firstName: "Skander", lastName: "Dridi", phone: "97123456", level: "2ème", section: "Économie", classIdx: 2 },
+    { firstName: "Ines", lastName: "Mansour", phone: "55789012", level: "2ème", section: "Économie", classIdx: 2 },
+    { firstName: "Mohamed", lastName: "Jlassi", phone: "21345678", level: "2ème", section: "Économie", classIdx: 2 },
+    { firstName: "Eya", lastName: "Riahi", phone: "29901234", level: "2ème", section: "Économie", classIdx: 2 },
+    { firstName: "Farouk", lastName: "Karray", phone: "96543210", level: "2ème", section: "Économie", classIdx: 2 },
 
     { firstName: "Karim", lastName: "Zouari", phone: "98765432", level: "Bac", section: "Informatique", classIdx: 3 },
     { firstName: "Chaima", lastName: "Cherif", phone: "51234567", level: "Bac", section: "Informatique", classIdx: 3 },

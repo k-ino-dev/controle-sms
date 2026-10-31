@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { classSchema } from "@/lib/validation";
+import { generateDefaultClassName, getNextAvailableClassNumber } from "@/lib/sections";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,22 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
   try {
+    const { searchParams } = new URL(req.url);
+    const level = searchParams.get("level") || "";
+    const section = searchParams.get("section") || "";
+
+    const whereClause: any = {};
+    if (level) whereClause.level = level;
+    if (section) {
+      if (section === "needs_update" || section === "Sciences") {
+        whereClause.section = "Sciences";
+      } else {
+        whereClause.section = section;
+      }
+    }
+
     const classes = await prisma.class.findMany({
+      where: whereClause,
       include: {
         enrollments: {
           where: {
@@ -54,19 +70,23 @@ export async function POST(req: NextRequest) {
 
     let finalName = name?.trim();
 
-    // Si aucun nom personnalisé n'est fourni, générer séquentiellement :
-    // Ex: "1ère classe 1", "1ère classe 2", "2ème Lettres classe 1"
+    // Si aucun nom personnalisé n'est fourni, générer séquentiellement par combinaison niveau + section :
+    // Ex: "1ère classe 1", "2ème Économie classe 1", "Bac Informatique classe 2"
     if (!finalName) {
-      const existingCount = await prisma.class.count({
+      const existingClasses = await prisma.class.findMany({
         where: {
           level,
           section: section || null,
         },
+        select: { name: true },
       });
 
-      const nextNum = existingCount + 1;
-      const sectionPart = section ? `${section} ` : "";
-      finalName = `${level} ${sectionPart}classe ${nextNum}`;
+      const nextNum = getNextAvailableClassNumber(
+        existingClasses.map((c) => c.name),
+        level,
+        section
+      );
+      finalName = generateDefaultClassName(level, section, nextNum);
     }
 
     const newClass = await prisma.class.create({
