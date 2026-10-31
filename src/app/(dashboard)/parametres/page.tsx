@@ -8,6 +8,7 @@ import {
   Lock,
   Download,
   AlertTriangle,
+  AlertCircle,
   RotateCcw,
   CheckCircle2,
   Send,
@@ -94,10 +95,16 @@ export default function ParametresPage() {
   const [resetting, setResetting] = useState(false);
   const [resetResult, setResetResult] = useState<string | null>(null);
 
-  const fetchStatus = async () => {
+  // Sauvegardes
+  const [backupStatus, setBackupStatus] = useState<any>(null);
+  const [runningBackup, setRunningBackup] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const fetchStatus = async (force = false) => {
     setRefreshingStatus(true);
     try {
-      const res = await fetch("/api/sms/status");
+      const url = force ? "/api/sms/status?refresh=true" : "/api/sms/status";
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setSmsStatus(data);
@@ -109,12 +116,50 @@ export default function ParametresPage() {
     }
   };
 
+  const fetchBackupStatus = async () => {
+    try {
+      const res = await fetch("/api/backup");
+      if (res.ok) {
+        const data = await res.json();
+        setBackupStatus(data);
+      }
+    } catch {
+      // Ignorer
+    }
+  };
+
+  const handleRunBackup = async () => {
+    setRunningBackup(true);
+    setBackupMessage(null);
+    try {
+      const res = await fetch("/api/backup", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setBackupMessage({
+          type: "success",
+          text: `✓ Sauvegarde réussie (${data.latest?.sizeFormatted || ""}) avec intégrité validée !`,
+        });
+        setBackupStatus(data);
+      } else {
+        setBackupMessage({
+          type: "error",
+          text: data.error || "Échec de la sauvegarde",
+        });
+      }
+    } catch {
+      setBackupMessage({ type: "error", text: "Erreur de connexion au serveur" });
+    } finally {
+      setRunningBackup(false);
+    }
+  };
+
   useEffect(() => {
     async function loadSettings() {
       try {
-        const [settingsRes, statusRes] = await Promise.all([
+        const [settingsRes, statusRes, backupRes] = await Promise.all([
           fetch("/api/parametres"),
           fetch("/api/sms/status"),
+          fetch("/api/backup"),
         ]);
         const settingsData = await settingsRes.json();
         if (settingsData.success) {
@@ -127,6 +172,10 @@ export default function ParametresPage() {
         if (statusRes.ok) {
           const statusData = await statusRes.json();
           setSmsStatus(statusData);
+        }
+        if (backupRes.ok) {
+          const backupData = await backupRes.json();
+          setBackupStatus(backupData);
         }
       } catch (err) {
         console.error(err);
@@ -908,33 +957,65 @@ export default function ParametresPage() {
               <div className="flex items-center gap-2">
                 <SmsServicePill />
                 <button
-                  onClick={fetchStatus}
+                  type="button"
+                  onClick={() => fetchStatus(true)}
                   disabled={refreshingStatus}
-                  className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 transition cursor-pointer"
-                  title="Rafraîchir le solde"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Rafraîchir immédiatement le solde depuis WinSMS"
                 >
-                  <RefreshCw className={`w-4 h-4 ${refreshingStatus ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshingStatus ? "animate-spin" : ""}`} />
+                  <span>Rafraîchir</span>
                 </button>
               </div>
             </div>
 
             {/* Cartes métriques SMS */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Solde WinSMS */}
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
                 <span className="text-[11px] font-semibold text-slate-400 block">Solde WinSMS</span>
                 <span className="text-xl font-black text-slate-900 dark:text-white">
-                  {smsStatus?.balance ?? 0} SMS
+                  {smsStatus?.balanceAvailable || (smsStatus?.balance !== null && smsStatus?.balance !== undefined)
+                    ? `${smsStatus.balance} SMS`
+                    : "Solde indisponible"}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  Mis à jour {smsStatus?.lastCheckedRelative || "récemment"}
                 </span>
               </div>
+
+              {/* Validité du pack */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
+                <span className="text-[11px] font-semibold text-slate-400 block">Validité du pack</span>
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200 block truncate">
+                  {smsStatus?.licenceDateFormatted ? `Jusqu'au ${smsStatus.licenceDateFormatted}` : "Non disponible"}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  Seuil alerte : {settings.sms_low_balance_threshold} SMS
+                </span>
+              </div>
+
+              {/* Mode de service */}
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
                 <span className="text-[11px] font-semibold text-slate-400 block">Mode de service</span>
-                <span className={`text-sm font-bold uppercase ${settings.sms_provider_mode === "winsms" ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                <span
+                  className={`text-sm font-bold uppercase ${
+                    settings.sms_provider_mode === "winsms"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-amber-600 dark:text-amber-400"
+                  }`}
+                >
                   {settings.sms_provider_mode === "winsms" ? "Mode Réel" : "Simulation"}
                 </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  {settings.sms_provider_mode === "winsms" ? "WinSMS Tunisie" : "Local / Essais"}
+                </span>
               </div>
+
+              {/* Clé API WinSMS */}
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
                 <span className="text-[11px] font-semibold text-slate-400 block">Clé API WinSMS</span>
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono block truncate">
                   {settings.winsms_api_key_configured ? (
                     <span className="text-emerald-600 dark:text-emerald-400">
                       ✓ {settings.winsms_api_key_masked}
@@ -943,24 +1024,47 @@ export default function ParametresPage() {
                     <span className="text-slate-400">Non configurée</span>
                   )}
                 </span>
-              </div>
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
-                <span className="text-[11px] font-semibold text-slate-400 block">Dernier statut</span>
-                <span
-                  className={`text-sm font-bold ${
-                    smsStatus?.lastSendStatus === "error"
-                      ? "text-rose-600"
-                    : "text-emerald-600"
-                  }`}
-                >
-                  {smsStatus?.lastSendStatus === "error" ? "Erreur" : "Opérationnel"}
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  {smsStatus?.serviceState === "red" ? (
+                    <span className="text-rose-600 font-semibold">Service en échec</span>
+                  ) : (
+                    <span className="text-emerald-600 font-semibold">Opérationnel</span>
+                  )}
                 </span>
               </div>
             </div>
 
-            {smsStatus?.lastError && (
-              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-semibold">
-                Dernière cause d'erreur : {smsStatus.lastError}
+            {/* Alertes visibles sur le solde, la licence ou les erreurs */}
+            {smsStatus?.serviceState === "red" && (
+              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>
+                  <strong>Erreur de service SMS :</strong>{" "}
+                  {smsStatus?.stateReason || smsStatus?.lastError || "Le dernier SMS tenté a échoué. Vérifiez vos identifiants ou le solde."}
+                </span>
+              </div>
+            )}
+
+            {smsStatus?.isLowBalance && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>
+                  <strong>Alerte Crédit Bas :</strong> Il ne vous reste que{" "}
+                  <strong>{smsStatus?.balance} SMS</strong> (inférieur au seuil d'alerte configuré de{" "}
+                  {settings.sms_low_balance_threshold} SMS). Pensez à recharger votre compte WinSMS.
+                </span>
+              </div>
+            )}
+
+            {smsStatus?.licenceExpiringSoon && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>
+                  <strong>Alerte Expiration de Licence :</strong> La validité de votre pack WinSMS expire le{" "}
+                  <strong>{smsStatus?.licenceDateFormatted}</strong> (dans {smsStatus?.daysUntilExpiry} jour
+                  {smsStatus?.daysUntilExpiry && smsStatus?.daysUntilExpiry > 1 ? "s" : ""}). Contactez WinSMS pour
+                  renouveler votre licence.
+                </span>
               </div>
             )}
           </div>
@@ -1298,6 +1402,86 @@ export default function ParametresPage() {
       {/* ONGLET 6 : ARCHIVAGE DE L'ANNÉE & NOUVELLE ANNÉE */}
       {activeTab === "archivage" && (
         <div className="space-y-6">
+          {/* Sauvegardes de Sécurité Automatisées & Manuelles */}
+          <div className="p-6 sm:p-8 rounded-3xl glass-card space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                  <span>Sauvegardes de Sécurité (Base SQLite)</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Sauvegarde automatique programmée chaque nuit à 02:00 (heure de Tunis, Africa/Tunis) avec contrôle d'intégrité strict (PRAGMA integrity_check).
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRunBackup}
+                disabled={runningBackup}
+                className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-colored-success flex items-center gap-2 transition cursor-pointer self-start sm:self-auto"
+              >
+                {runningBackup ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Sauvegarder maintenant</span>
+              </button>
+            </div>
+
+            {backupMessage && (
+              <div
+                className={`p-3.5 rounded-2xl text-xs font-semibold ${
+                  backupMessage.type === "success"
+                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                    : "bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300"
+                }`}
+              >
+                {backupMessage.text}
+              </div>
+            )}
+
+            {/* Avertissement discret si > 48h ou aucune sauvegarde */}
+            {backupStatus?.isOver48h && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>
+                  <strong>Avertissement :</strong> Aucune sauvegarde récente enregistrée depuis plus de 48 heures (ou aucune sauvegarde existante). Il est recommandé de déclencher une sauvegarde manuelle.
+                </span>
+              </div>
+            )}
+
+            {/* Détails de la dernière sauvegarde */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
+                <span className="text-[11px] font-semibold text-slate-400 block">Dernière sauvegarde</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-white block mt-0.5">
+                  {backupStatus?.latest ? backupStatus.latest.formattedDate : "Aucune sauvegarde"}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  {backupStatus?.latest ? backupStatus.latest.relativeTime : "En attente"}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
+                <span className="text-[11px] font-semibold text-slate-400 block">Taille du fichier</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-white block mt-0.5">
+                  {backupStatus?.latest ? backupStatus.latest.sizeFormatted : "0 Ko"}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  Snapshot vérifié (PRAGMA integrity_check)
+                </span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
+                <span className="text-[11px] font-semibold text-slate-400 block">Sauvegardes conservées</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-white block mt-0.5">
+                  {backupStatus?.count ?? 0} fichier{backupStatus?.count && backupStatus.count > 1 ? "s" : ""}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  Rotation automatique (7 plus récentes)
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Étape 1 : Téléchargement de l'archive */}
           <div className="p-6 sm:p-8 rounded-3xl glass-card space-y-3">
             <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">

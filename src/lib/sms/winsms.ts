@@ -125,17 +125,20 @@ export class WinSmsProvider implements SmsProvider {
         const reference = rawData.reference ? String(rawData.reference).trim() : undefined;
         let balance: number | undefined = undefined;
         if (typeof rawData.balance === "number") {
-          balance = rawData.balance;
+          balance = Math.round(rawData.balance);
         } else if (rawData.balance !== undefined && rawData.balance !== null) {
-          const parsed = parseFloat(String(rawData.balance));
+          const parsed = parseInt(String(rawData.balance), 10);
           if (!isNaN(parsed)) balance = parsed;
         }
+
+        const licenceDate = rawData.licence ? String(rawData.licence).trim() : undefined;
 
         return {
           success: true,
           messageId: reference || `WINSMS-${Date.now()}`,
           reference,
           balance,
+          licenceDate,
           rawCode,
           rawMessage,
           raw: sanitizedRaw,
@@ -187,18 +190,43 @@ export class WinSmsProvider implements SmsProvider {
   }
 
   /**
-   * Consultation du solde restant WinSMS
+   * Consultation du solde restant WinSMS et de la date de validité du pack
+   * Format RÉEL vérifié :
+   * GET https://www.winsmspro.com/sms/sms/api?action=check-balance&api_key=<CLÉ>&response=json
+   * 
+   * Réponse nominale (HTTP 200) :
+   * {"balance":1471,"user":"...","country":"Tunisia","licence":"2027-04-27"}
+   * 
+   * Clé invalide (HTTP 200) :
+   * {"code":"102","message":"Authentication Failed"}
+   * 
+   * La clé API n'est JAMAIS loggée.
    */
-  async getBalance(): Promise<number> {
-    if (!this.apiKey || !this.apiKey.trim()) return 0;
+  async getBalance(): Promise<{
+    success: boolean;
+    balance: number | null;
+    licenceDate?: string | null;
+    raw?: any;
+    error?: string;
+  }> {
+    if (!this.apiKey || !this.apiKey.trim()) {
+      return {
+        success: false,
+        balance: null,
+        licenceDate: null,
+        error: "Clé API WinSMS non configurée",
+        raw: { error: "Missing API Key" },
+      };
+    }
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const url = new URL(this.apiUrl);
-      url.searchParams.set("action", "get-balance");
+      url.searchParams.set("action", "check-balance");
       url.searchParams.set("api_key", this.apiKey);
+      url.searchParams.set("response", "json");
 
       const response = await fetch(url.toString(), {
         method: "GET",
@@ -207,22 +235,87 @@ export class WinSmsProvider implements SmsProvider {
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) return 0;
-
       const text = await response.text();
       let data: any = null;
+      let isJson = false;
       try {
         data = JSON.parse(text);
+        isJson = typeof data === "object" && data !== null;
       } catch {
-        data = text;
+        isJson = false;
       }
 
-      const balance = Number(
-        data?.balance ?? data?.credits ?? data?.solde ?? data?.amount ?? (typeof data === "string" ? parseFloat(data) : 0)
-      );
-      return isNaN(balance) ? 0 : balance;
-    } catch {
-      return 0;
+      const sanitizedRaw = sanitizeObjectForLogging(isJson ? data : text);
+
+      if (!response.ok) {
+        return {
+          success: false,
+          balance: null,
+          licenceDate: null,
+          error: `Erreur HTTP ${response.status} de WinSMS`,
+          raw: sanitizedRaw,
+        };
+      }
+
+      // Clé invalide
+      if (isJson && (data.code === "102" || String(data.code).trim() === "102")) {
+        return {
+          success: false,
+          balance: null,
+          licenceDate: null,
+          error: "Clé API WinSMS invalide ou non activée",
+          raw: sanitizedRaw,
+        };
+      }
+
+      // Format inattendu ou pas de champ balance : NE JAMAIS RETOURNER 0
+      if (!isJson || typeof data.balance === "undefined" || data.balance === null) {
+        return {
+          success: false,
+          balance: null,
+          licenceDate: null,
+          error: "Réponse inattendue de WinSMS : champ 'balance' absent",
+          raw: sanitizedRaw,
+        };
+      }
+
+      const parsedBalance = parseInt(String(data.balance), 10);
+      if (isNaN(parsedBalance)) {
+        return {
+          success: false,
+          balance: null,
+          licenceDate: null,
+          error: "Solde reçu non numérique",
+          raw: sanitizedRaw,
+        };
+      }
+
+      const licenceDate = data.licence ? String(data.licence).trim() : null;
+
+      return {
+        success: true,
+        balance: parsedBalance,
+        licenceDate,
+        raw: sanitizedRaw,
+      };
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        return {
+          success: false,
+          balance: null,
+          licenceDate: null,
+          error: "Délai d'attente dépassé (timeout WinSMS)",
+          raw: { error: "Network timeout after 12000ms" },
+        };
+      }
+
+      return {
+        success: false,
+        balance: null,
+        licenceDate: null,
+        error: "Erreur de connexion lors de la consultation du solde",
+        raw: { error: sanitizeApiKeyInString(err.message || String(err)) },
+      };
     }
   }
 }

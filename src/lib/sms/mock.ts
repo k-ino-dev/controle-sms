@@ -43,7 +43,18 @@ export class MockSmsProvider implements SmsProvider {
     };
   }
 
-  async getBalance(): Promise<number> {
-    return mockBalance;
+  async getBalance(): Promise<{
+    success: boolean;
+    balance: number | null;
+    licenceDate?: string | null;
+    raw?: any;
+    error?: string;
+  }> {
+    return {
+      success: true,
+      balance: mockBalance,
+      licenceDate: "2027-12-31",
+      raw: { mock: true, balance: mockBalance },
+    };
   }
 }

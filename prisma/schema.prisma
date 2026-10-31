@@ -117,12 +117,14 @@ model SmsQueue {
 }
 
 model SmsServiceStatus {
-  id             String   @id @default("singleton")
-  lastCheckedAt  DateTime @default(now())
-  balance        Float    @default(0)
-  lastSendStatus String?  // "success" | "error"
+  id             String    @id @default("singleton")
+  lastCheckedAt  DateTime?
+  balance        Int?      // Solde réel WinSMS en SMS (null tant qu'aucun solde valide n'a été obtenu)
+  licenceDate    String?   // Date d'expiration du pack WinSMS (ex: "2027-04-27")
+  lastSendStatus String?   // "success" | "error"
   lastError      String?
-  updatedAt      DateTime @updatedAt
+  rawResponse    String?
+  updatedAt      DateTime  @updatedAt
 }
 
 model LoginAttempt {

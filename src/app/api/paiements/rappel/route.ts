@@ -125,6 +125,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Réveil immédiat du worker
+    try {
+      const { triggerSmsWorker } = await import("@/lib/sms/worker");
+      triggerSmsWorker();
+    } catch {
+      // Ignorer
+    }
+
     return NextResponse.json({
       success: true,
       sms,

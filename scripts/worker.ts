@@ -1,14 +1,13 @@
-import { startSmsWorker } from "../src/lib/sms/worker";
+import { startSmsWorker, stopSmsWorker } from "../src/lib/sms/worker";
 
-console.log("[SMS Worker Standalone] Démarrage du worker de file d'attente SMS...");
+console.log("[SMS Worker Standalone] Démarrage du worker de file d'attente SMS (cycle 5s)...");
 startSmsWorker(5000);
 
-process.on("SIGTERM", () => {
-  console.log("[SMS Worker Standalone] Arrêt propre...");
+const shutdown = () => {
+  console.log("[SMS Worker Standalone] Arrêt propre du worker...");
+  stopSmsWorker();
   process.exit(0);
-});
+};
 
-process.on("SIGINT", () => {
-  console.log("[SMS Worker Standalone] Arrêt propre...");
-  process.exit(0);
-});
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

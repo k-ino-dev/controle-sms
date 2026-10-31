@@ -7,15 +7,18 @@ services:
     environment:
       - DATABASE_URL=file:/app/data/dev.db
       - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - INITIAL_DIRECTOR_USERNAME=${INITIAL_DIRECTOR_USERNAME:-directeur}
       - INITIAL_DIRECTOR_PASSWORD=${INITIAL_DIRECTOR_PASSWORD}
       - SMS_PROVIDER=${SMS_PROVIDER:-winsms}
-      - WINSMS_API_KEY=${WINSMS_API_KEY}
-      - WINSMS_SENDER_ID=${WINSMS_SENDER_ID:-ELIMTIAZ}
-      - WINSMS_API_URL=${WINSMS_API_URL:-https://api.winsms.tn/v1}
+      - WINSMS_API_KEY=${WINSMS_API_KEY:-}
+      - WINSMS_SENDER_ID=${WINSMS_SENDER_ID:-Lyc.Emtiyez}
+      - WINSMS_API_URL=${WINSMS_API_URL:-https://www.winsmspro.com/sms/sms/api}
       - UPLOADS_DIR=/app/data/uploads
       - BACKUPS_DIR=/app/data/backups
       - NODE_ENV=production
+      - TZ=Africa/Tunis
+      - ENABLE_EMBEDDED_WORKER=false
     volumes:
       # Volumes persistants dédiés sur l'hôte (zéro écrasement de code, zéro perte de données)
       - ./data/db:/app/data
@@ -35,6 +38,39 @@ services:
     networks:
       - app-network
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npx", "tsx", "scripts/worker.ts"]
+    environment:
+      - DATABASE_URL=file:/app/data/dev.db
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - SMS_PROVIDER=${SMS_PROVIDER:-winsms}
+      - WINSMS_API_KEY=${WINSMS_API_KEY:-}
+      - WINSMS_SENDER_ID=${WINSMS_SENDER_ID:-Lyc.Emtiyez}
+      - WINSMS_API_URL=${WINSMS_API_URL:-https://www.winsmspro.com/sms/sms/api}
+      - UPLOADS_DIR=/app/data/uploads
+      - BACKUPS_DIR=/app/data/backups
+      - NODE_ENV=production
+      - TZ=Africa/Tunis
+    volumes:
+      - ./data/db:/app/data
+      - ./data/uploads:/app/data/uploads
+      - ./data/backups:/app/data/backups
+    depends_on:
+      web:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -43,6 +79,7 @@ services:
       - "443:443"
     environment:
       - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+      - TZ=Africa/Tunis
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

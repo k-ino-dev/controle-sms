@@ -1,6 +1,11 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    // Démarrage automatique du worker de file SMS côté serveur
+    // Si un service worker dédié est actif en production Docker, ignorer l'in-process
+    if (process.env.ENABLE_EMBEDDED_WORKER === "false") {
+      console.log("[Contrôle SMS] Worker SMS in-process désactivé (délégué au service worker dédié).");
+      return;
+    }
+
     try {
       const { startSmsWorker } = await import("./lib/sms/worker");
       startSmsWorker(5000);

@@ -1,12 +1,13 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # ==============================================================================
-# Script de Restauration Sécurisée de la Base SQLite avec Sauvegarde Préalable
+# Script POSIX de Restauration Sécurisée de la Base SQLite avec Contrôles d'Intégrité
+# Compatible 100% avec /bin/sh BusyBox (Alpine Linux)
 # ==============================================================================
 
-set -euo pipefail
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TIMESTAMP="$(date +'%Y-%m-%d_%H-%M-%S')"
 
 # 1. Détection du répertoire de sauvegarde
@@ -18,7 +19,7 @@ else
     BACKUP_DIR="$ROOT_DIR/data/backups"
 fi
 
-# 2. Vérification de l'argument
+# 2. Vérification des arguments
 if [ $# -lt 1 ]; then
     echo "===================================================================="
     echo "  Usage : $0 <fichier_sauvegarde.db> [-y]"
@@ -36,7 +37,7 @@ if [ "${2:-}" = "-y" ] || [ "${FORCE:-0}" = "1" ]; then
     FORCE_CONFIRM=1
 fi
 
-# Résolution du fichier de sauvegarde
+# Résolution du chemin absolu du fichier de sauvegarde
 BACKUP_PATH=""
 if [ -f "$INPUT_FILE" ]; then
     BACKUP_PATH="$INPUT_FILE"
@@ -50,7 +51,7 @@ fi
 # 3. Détection de la base de données de destination
 DEST_DB=""
 if [ -n "${DATABASE_URL:-}" ]; then
-    CLEANED_URL="${DATABASE_URL#file:}"
+    CLEANED_URL=$(echo "$DATABASE_URL" | sed 's/^file://')
     DEST_DB="$CLEANED_URL"
 elif [ -d "/app/data" ]; then
     DEST_DB="/app/data/dev.db"
@@ -58,6 +59,8 @@ elif [ -d "$ROOT_DIR/data/db" ]; then
     DEST_DB="$ROOT_DIR/data/db/dev.db"
 elif [ -f "$ROOT_DIR/data/prisma/dev.db" ]; then
     DEST_DB="$ROOT_DIR/data/prisma/dev.db"
+elif [ -f "$ROOT_DIR/prisma/dev.db" ]; then
+    DEST_DB="$ROOT_DIR/prisma/dev.db"
 else
     DEST_DB="$ROOT_DIR/dev.db"
 fi
@@ -67,10 +70,21 @@ echo "  RESTAURATION DE LA BASE DE DONNÉES SQLITE"
 echo "===================================================================="
 echo "Source       : $BACKUP_PATH"
 echo "Destination  : $DEST_DB"
-echo "Taille       : $(ls -lh "$BACKUP_PATH" | awk '{print $5}')"
 echo "===================================================================="
 
-# 4. Confirmation utilisateur
+# 4. Vérification d'intégrité préalable de la sauvegarde source AVANT toute modification
+if command -v sqlite3 >/dev/null 2>&1; then
+    echo "🔍 Contrôle préalable d'intégrité du fichier de sauvegarde..."
+    SRC_INTEGRITY=$(sqlite3 "$BACKUP_PATH" "PRAGMA integrity_check;" 2>&1 || true)
+    if [ "$SRC_INTEGRITY" != "ok" ]; then
+        echo "❌ [ERREUR] Le fichier de sauvegarde est corrompu ou invalide : $SRC_INTEGRITY" >&2
+        echo "   Restauration annulée pour protéger la base actuelle." >&2
+        exit 1
+    fi
+    echo "✓ Sauvegarde source vérifiée : Intégrité OK"
+fi
+
+# 5. Confirmation utilisateur
 if [ "$FORCE_CONFIRM" -ne 1 ]; then
     echo "⚠️  ATTENTION : La restauration va remplacer l'état actuel de la base de données."
     printf "Confirmez-vous cette opération ? Tapez 'OUI' pour continuer : "
@@ -81,7 +95,8 @@ if [ "$FORCE_CONFIRM" -ne 1 ]; then
     fi
 fi
 
-# 5. Création d'un snapshot de sécurité préventif de la base active
+# 6. Création d'un snapshot de sécurité préventif de la base active
+mkdir -p "$BACKUP_DIR"
 if [ -f "$DEST_DB" ]; then
     SAFETY_BACKUP="$BACKUP_DIR/ecole_prerestore_snapshot_${TIMESTAMP}.db"
     echo "📦 Création d'un snapshot de sécurité préventif : $SAFETY_BACKUP"
@@ -92,10 +107,10 @@ if [ -f "$DEST_DB" ]; then
     fi
 fi
 
-# S'assurer que le répertoire cible existe
+# S'assurer que le répertoire de destination existe
 mkdir -p "$(dirname "$DEST_DB")"
 
-# 6. Restauration de la base
+# 7. Restauration effective
 echo "🔄 Restauration en cours..."
 if command -v sqlite3 >/dev/null 2>&1; then
     sqlite3 "$BACKUP_PATH" ".backup '$DEST_DB'"
@@ -103,14 +118,14 @@ else
     cp "$BACKUP_PATH" "$DEST_DB"
 fi
 
-# 7. Vérification d'intégrité
+# 8. Vérification d'intégrité après restauration
 if command -v sqlite3 >/dev/null 2>&1; then
-    INTEGRITY=$(sqlite3 "$DEST_DB" "PRAGMA integrity_check;")
-    if [ "$INTEGRITY" != "ok" ]; then
-        echo "❌ [ERREUR] L'intégrité de la base restaurée est anormale : $INTEGRITY" >&2
+    POST_INTEGRITY=$(sqlite3 "$DEST_DB" "PRAGMA integrity_check;" 2>&1 || true)
+    if [ "$POST_INTEGRITY" != "ok" ]; then
+        echo "❌ [ERREUR] L'intégrité de la base après restauration est anormale : $POST_INTEGRITY" >&2
         exit 1
     fi
-    echo "✓ Contrôle d'intégrité SQLite : OK ($INTEGRITY)"
+    echo "✓ Contrôle d'intégrité SQLite post-restauration : OK ($POST_INTEGRITY)"
 fi
 
 echo "===================================================================="

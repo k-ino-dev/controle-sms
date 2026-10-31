@@ -10,6 +10,7 @@ import {
   getTunisTimeHHMM,
   DEFAULT_TEMPLATES,
 } from "@/lib/sms";
+import { triggerSmsWorker } from "@/lib/sms/worker";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +162,15 @@ export async function POST(req: NextRequest) {
 
       return createdSession;
     });
+
+    // Réveil immédiat du worker pour que le parent reçoive le SMS dans les 10 secondes
+    if (absentStudents.length > 0) {
+      try {
+        triggerSmsWorker();
+      } catch (err) {
+        console.error("Erreur déclenchement immédiat worker :", err);
+      }
+    }
 
     return NextResponse.json({
       success: true,

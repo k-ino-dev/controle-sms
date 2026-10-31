@@ -67,7 +67,7 @@ async function main() {
     },
     {
       key: "winsms_api_url",
-      value: process.env.WINSMS_API_URL || "https://api.winsms.tn/v1",
+      value: process.env.WINSMS_API_URL || "https://www.winsmspro.com/sms/sms/api",
     },
     { key: "sms_low_balance_threshold", value: "25" },
     { key: "sms_delay_between_sends", value: "1000" },
@@ -93,11 +93,11 @@ async function main() {
     await prisma.smsServiceStatus.create({
       data: {
         id: "singleton",
-        balance: 500,
-        lastSendStatus: "success",
+        balance: null,
+        lastSendStatus: null,
       },
     });
-    console.log("📡 Statut WinSMS initialisé.");
+    console.log("📡 Statut WinSMS initialisé (en attente du solde réel).");
   }
 
   // 4. Données de démonstration : PAS en production sauf si SEED_DEMO_DATA=true

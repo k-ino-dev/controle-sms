@@ -1,9 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # ==============================================================================
-# Script de Mise à Jour Sécurisée de l'Application sur VPS
+# Script POSIX de Mise à Jour Sécurisée de l'Application sur VPS
+# Compatible 100% avec /bin/sh BusyBox (Alpine Linux)
 # ==============================================================================
 
-set -euo pipefail
+set -eu
 
 echo "=============================================================="
 echo "  🔄 MISE À JOUR DE L'APPLICATION CONTRÔLE SMS               "
@@ -12,7 +13,7 @@ echo "=============================================================="
 # 1. Sauvegarde préventive de la base de données
 echo "1. Création d'une sauvegarde de sécurité préalable..."
 if [ -f "./scripts/backup.sh" ]; then
-    bash ./scripts/backup.sh
+    sh ./scripts/backup.sh
 fi
 
 # 2. Récupération des dernières modifications de code

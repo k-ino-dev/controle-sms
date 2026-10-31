@@ -58,6 +58,13 @@ export async function POST(
       },
     });
 
+    try {
+      const { triggerSmsWorker } = await import("@/lib/sms/worker");
+      triggerSmsWorker();
+    } catch {
+      // Ignorer
+    }
+
     return NextResponse.json({
       success: true,
       message: "SMS remis en file d'attente pour réexpédition",

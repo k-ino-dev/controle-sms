@@ -70,12 +70,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Mise à jour immédiate du solde affiché si retourné par WinSMS
+    // Mise à jour immédiate du solde et licence si retournés par WinSMS
     if (result.success && typeof result.balance === "number") {
       await prisma.smsServiceStatus.upsert({
         where: { id: "singleton" },
         update: {
           balance: result.balance,
+          licenceDate: result.licenceDate || undefined,
           lastCheckedAt: new Date(),
           lastSendStatus: "success",
           lastError: null,
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
         create: {
           id: "singleton",
           balance: result.balance,
+          licenceDate: result.licenceDate || undefined,
           lastCheckedAt: new Date(),
           lastSendStatus: "success",
         },

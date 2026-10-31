@@ -8,11 +8,20 @@ import Link from "next/link";
 export interface SmsStatusData {
   success: boolean;
   serviceState: "green" | "orange" | "red";
-  balance: number;
+  stateReason?: string | null;
+  balance: number | null;
+  balanceAvailable?: boolean;
+  balanceFormatted?: string;
   isLowBalance: boolean;
   lowBalanceThreshold: number;
+  licenceDate?: string | null;
+  licenceDateFormatted?: string | null;
+  daysUntilExpiry?: number | null;
+  licenceExpiringSoon?: boolean;
   lastSendStatus: "success" | "error";
   lastError: string | null;
+  lastCheckedRelative?: string;
+  failed24hCount?: number;
   provider: string;
 }
 
@@ -20,12 +29,14 @@ export function SmsServicePill({ showDetails = false }: { showDetails?: boolean 
   const [status, setStatus] = useState<SmsStatusData>({
     success: true,
     serviceState: "green",
-    balance: 0,
+    stateReason: null,
+    balance: null,
+    balanceFormatted: "Vérification...",
     isLowBalance: false,
     lowBalanceThreshold: 25,
     lastSendStatus: "success",
     lastError: null,
-    provider: "mock",
+    provider: "winsms",
   });
   const [loading, setLoading] = useState(true);
 
@@ -36,10 +47,10 @@ export function SmsServicePill({ showDetails = false }: { showDetails?: boolean 
         const data = await res.json();
         setStatus(data);
       } else {
-        setStatus((prev) => ({ ...prev, serviceState: "red" }));
+        setStatus((prev) => ({ ...prev, serviceState: "red", stateReason: "Service inaccessible" }));
       }
     } catch {
-      setStatus((prev) => ({ ...prev, serviceState: "red" }));
+      setStatus((prev) => ({ ...prev, serviceState: "red", stateReason: "Erreur de connexion" }));
     } finally {
       setLoading(false);
     }
@@ -62,7 +73,11 @@ export function SmsServicePill({ showDetails = false }: { showDetails?: boolean 
       bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
       dot: "bg-amber-500",
       ping: "bg-amber-400",
-      label: "Solde SMS bas",
+      label: status.licenceExpiringSoon
+        ? "Pack expire bientôt"
+        : status.balance === null
+        ? "Solde indisponible"
+        : "Solde SMS bas",
     },
     red: {
       bg: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
@@ -70,26 +85,37 @@ export function SmsServicePill({ showDetails = false }: { showDetails?: boolean 
       ping: "bg-rose-400",
       label: "SMS en échec",
     },
-  }[status.serviceState];
+  }[status.serviceState || "green"];
+
+  const balanceDisplay =
+    status.balance !== null && status.balance !== undefined
+      ? `${status.balance} SMS`
+      : "Solde indisponible";
+
+  const tooltipText = status.stateReason
+    ? `État : ${status.stateReason} | ${balanceDisplay}`
+    : `Fournisseur : ${status.provider.toUpperCase()} | ${balanceDisplay} | Seuil : ${status.lowBalanceThreshold}`;
 
   return (
     <div className="flex flex-col gap-2">
       <Link
         href="/parametres"
         className={`inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:scale-[1.02] ${stateColors.bg}`}
-        title={`Fournisseur : ${status.provider.toUpperCase()} | Solde : ${status.balance} SMS | Seuil : ${status.lowBalanceThreshold}`}
+        title={tooltipText}
       >
         <div className="flex items-center gap-2">
-          {/* Pulsing dot */}
+          {/* Indicateur d'état pulsant */}
           <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${stateColors.ping}`} />
+            <span
+              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${stateColors.ping}`}
+            />
             <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${stateColors.dot}`} />
           </span>
           <span className="truncate">{stateColors.label}</span>
         </div>
 
         <span className="text-[11px] font-bold opacity-80 pl-1 border-l border-current/20 shrink-0">
-          {status.balance} SMS
+          {balanceDisplay}
         </span>
       </Link>
 
@@ -98,13 +124,16 @@ export function SmsServicePill({ showDetails = false }: { showDetails?: boolean 
           <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
             <div className="text-slate-400">Solde actuel</div>
             <div className="font-bold text-slate-900 dark:text-white text-sm">
-              {status.balance} SMS
+              {balanceDisplay}
             </div>
+            {status.lastCheckedRelative && (
+              <div className="text-[10px] text-slate-400 mt-0.5">{status.lastCheckedRelative}</div>
+            )}
           </div>
           <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
-            <div className="text-slate-400">Fournisseur</div>
-            <div className="font-semibold text-slate-800 dark:text-slate-200 uppercase">
-              {status.provider}
+            <div className="text-slate-400">Validité pack</div>
+            <div className="font-semibold text-slate-800 dark:text-slate-200">
+              {status.licenceDateFormatted || "N/A"}
             </div>
           </div>
         </div>
@@ -113,7 +142,7 @@ export function SmsServicePill({ showDetails = false }: { showDetails?: boolean 
   );
 }
 
-// Bandeau d'alerte global si solde bas ou échec SMS
+// Bandeau d'alerte global si solde bas, expiration de licence ou échec SMS
 export function SmsBalanceBanner() {
   const [status, setStatus] = useState<SmsStatusData | null>(null);
 
@@ -158,11 +187,21 @@ export function SmsBalanceBanner() {
         <span>
           {isRed ? (
             <>
-              <strong>Erreur d'envoi SMS :</strong> {status.lastError || "Un problème est survenu lors de l'envoi récent via WinSMS. Vérifiez votre compte ou votre clé API."}
+              <strong>Erreur d'envoi SMS :</strong>{" "}
+              {status.stateReason || status.lastError || "Le dernier envoi via WinSMS a échoué. Vérifiez votre compte et la clé API."}
+            </>
+          ) : status.licenceExpiringSoon ? (
+            <>
+              <strong>Pack WinSMS bientôt expiré :</strong> La validité du pack se termine le{" "}
+              <strong>{status.licenceDateFormatted}</strong> ({status.daysUntilExpiry} jour{status.daysUntilExpiry && status.daysUntilExpiry > 1 ? "s" : ""} restant{status.daysUntilExpiry && status.daysUntilExpiry > 1 ? "s" : ""}). Pensez à renouveler votre licence.
+            </>
+          ) : status.balance !== null ? (
+            <>
+              <strong>Solde SMS bas :</strong> Il vous reste <strong>{status.balance} SMS</strong> (seuil d'alerte : {status.lowBalanceThreshold}). Pensez à recharger votre compte WinSMS.
             </>
           ) : (
             <>
-              <strong>Solde SMS bas :</strong> Il vous reste <strong>{status.balance} SMS</strong> (seuil d'alerte : {status.lowBalanceThreshold}). Pensez à recharger votre compte WinSMS.
+              <strong>Solde WinSMS indisponible :</strong> Impossible de lire le solde actuel sur votre compte WinSMS. Vérifiez votre connexion.
             </>
           )}
         </span>
