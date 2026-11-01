@@ -57,11 +57,12 @@ export default function ParametresPage() {
     winsms_api_key: "",
     winsms_api_key_configured: false,
     winsms_api_key_masked: "",
+    winsms_api_key_unreadable: false,
     winsms_api_url: "https://www.winsmspro.com/sms/sms/api",
     sms_provider_mode: "mock",
-    sms_low_balance_threshold: 25,
+    sms_low_balance_threshold: 500,
     sms_delay_between_sends: 1000,
-    sms_daily_limit: 500,
+    sms_daily_limit: 150,
     academic_year: "2026-2027",
   });
 
@@ -975,12 +976,14 @@ export default function ParametresPage() {
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
                 <span className="text-[11px] font-semibold text-slate-400 block">Solde WinSMS</span>
                 <span className="text-xl font-black text-slate-900 dark:text-white">
-                  {smsStatus?.balanceAvailable || (smsStatus?.balance !== null && smsStatus?.balance !== undefined)
+                  {smsStatus?.balance !== null && smsStatus?.balance !== undefined
                     ? `${smsStatus.balance} SMS`
                     : "Solde indisponible"}
                 </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Mis à jour {smsStatus?.lastCheckedRelative || "récemment"}
+                <span className="text-[10px] text-slate-400 block mt-0.5 truncate" title={smsStatus?.balance === null ? (smsStatus?.balanceError || smsStatus?.lastError || undefined) : undefined}>
+                  {smsStatus?.balance !== null && smsStatus?.balance !== undefined
+                    ? `Mis à jour ${smsStatus?.lastCheckedRelative || "récemment"}`
+                    : (smsStatus?.balanceError || smsStatus?.lastError || "En attente de consultation")}
                 </span>
               </div>
 
@@ -988,7 +991,7 @@ export default function ParametresPage() {
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
                 <span className="text-[11px] font-semibold text-slate-400 block">Validité du pack</span>
                 <span className="text-sm font-bold text-slate-800 dark:text-slate-200 block truncate">
-                  {smsStatus?.licenceDateFormatted ? `Jusqu'au ${smsStatus.licenceDateFormatted}` : "Non disponible"}
+                  {smsStatus?.licenceDateFormatted ? `Jusqu'au ${smsStatus.licenceDateFormatted}` : "Validité : indisponible"}
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
                   Seuil alerte : {settings.sms_low_balance_threshold} SMS
@@ -1016,7 +1019,11 @@ export default function ParametresPage() {
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
                 <span className="text-[11px] font-semibold text-slate-400 block">Clé API WinSMS</span>
                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono block truncate">
-                  {settings.winsms_api_key_configured ? (
+                  {settings.winsms_api_key_unreadable ? (
+                    <span className="text-rose-600 dark:text-rose-400 font-bold">
+                      ⚠️ Clé illisible : ressaisissez-la
+                    </span>
+                  ) : settings.winsms_api_key_configured ? (
                     <span className="text-emerald-600 dark:text-emerald-400">
                       ✓ {settings.winsms_api_key_masked}
                     </span>
@@ -1025,7 +1032,9 @@ export default function ParametresPage() {
                   )}
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {smsStatus?.serviceState === "red" ? (
+                  {settings.winsms_api_key_unreadable ? (
+                    <span className="text-rose-500 font-semibold">Déchiffrement impossible</span>
+                  ) : smsStatus?.serviceState === "red" ? (
                     <span className="text-rose-600 font-semibold">Service en échec</span>
                   ) : (
                     <span className="text-emerald-600 font-semibold">Opérationnel</span>
@@ -1134,12 +1143,17 @@ export default function ParametresPage() {
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Clé API WinSMS (Secret Key)
                   </label>
-                  {settings.winsms_api_key_configured && (
+                  {settings.winsms_api_key_unreadable ? (
+                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>Clé illisible : ressaisissez-la</span>
+                    </span>
+                  ) : settings.winsms_api_key_configured ? (
                     <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Configurée : Oui ({settings.winsms_api_key_masked})</span>
                     </span>
-                  )}
+                  ) : null}
                 </div>
                 
                 <div className="relative flex items-center">

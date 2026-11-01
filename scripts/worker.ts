@@ -1,6 +1,8 @@
 import { startSmsWorker, stopSmsWorker } from "../src/lib/sms/worker";
 
-console.log("[SMS Worker Standalone] Démarrage du worker de file d'attente SMS (cycle 5s)...");
+console.log("==========================================================");
+console.log("🚀 [SMS Worker] Worker SMS démarré (cycle de 5s)");
+console.log("==========================================================");
 startSmsWorker(5000);
 
 const shutdown = () => {

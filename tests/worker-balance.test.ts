@@ -8,7 +8,9 @@ import {
   releaseWorkerLock,
   triggerSmsWorker,
   registerWakeListener,
+  migrateZeroBalanceToNull,
 } from "../src/lib/sms/worker";
+import { getEffectiveSmsConfig } from "../src/lib/sms/config";
 import http from "http";
 
 async function runTests() {
@@ -191,6 +193,148 @@ async function runTests() {
     assert.strictEqual(wakeCalled, true, "Le réveil immédiat doit notifier les écouteurs instantanément");
     unregister();
     console.log("  ✓ Réveil immédiat (triggerSmsWorker) exécuté en < 1ms.");
+
+    // ------------------------------------------------------------------------
+    // TEST 6 : Migration des anciennes valeurs 0 non confirmées vers null
+    // ------------------------------------------------------------------------
+    console.log("\n▶ TEST 6 : Migration des soldes '0' par défaut vers null...");
+
+    // Cas A : solde 0 non confirmé par une lecture explicite (défaut ou ancien bug)
+    await prisma.smsServiceStatus.upsert({
+      where: { id: "singleton" },
+      update: { balance: 0, rawResponse: null, lastError: "Erreur passée" },
+      create: { id: "singleton", balance: 0, rawResponse: null, lastError: "Erreur passée" },
+    });
+    await migrateZeroBalanceToNull();
+    const migratedStatusA = await prisma.smsServiceStatus.findUnique({ where: { id: "singleton" } });
+    assert.strictEqual(migratedStatusA?.balance, null, "L'ancien solde 0 non confirmé doit être migré vers null");
+    console.log("  ✓ Ancien solde 0 non confirmé migré vers null.");
+
+    // Cas B : vrai solde 0 confirmé par WinSMS
+    await prisma.smsServiceStatus.upsert({
+      where: { id: "singleton" },
+      update: { balance: 0, rawResponse: JSON.stringify({ balance: 0 }), lastError: null },
+      create: { id: "singleton", balance: 0, rawResponse: JSON.stringify({ balance: 0 }), lastError: null },
+    });
+    await migrateZeroBalanceToNull();
+    const migratedStatusB = await prisma.smsServiceStatus.findUnique({ where: { id: "singleton" } });
+    assert.strictEqual(migratedStatusB?.balance, 0, "Un vrai solde 0 confirmé ne doit pas être écrasé");
+    console.log("  ✓ Vrai solde 0 confirmé préservé.");
+
+    // ------------------------------------------------------------------------
+    // TEST 7 : Solde inconnu (null) -> envoi autorisé (jamais bloqué par le site)
+    // ------------------------------------------------------------------------
+    console.log("\n▶ TEST 7 : Solde inconnu (null) -> Envoi autorisé sans blocage...");
+
+    await prisma.smsServiceStatus.upsert({
+      where: { id: "singleton" },
+      update: { balance: null, lastError: "Timeout réseau" },
+      create: { id: "singleton", balance: null, lastError: "Timeout réseau" },
+    });
+
+    const pendingUnknownBal = await prisma.smsQueue.create({
+      data: {
+        parentPhone: "98123457",
+        message: "SMS avec solde inconnu",
+        type: "absence",
+        status: "pending",
+        retryCount: 0,
+        nextRetryAt: new Date(Date.now() - 1000),
+      },
+    });
+
+    const resUnknownBal = await processSmsQueueOnce();
+    assert.strictEqual(resUnknownBal.processed >= 1, true, "Le SMS doit être traité");
+    assert.strictEqual(resUnknownBal.sent >= 1, true, "Le SMS doit être envoyé même si solde inconnu");
+
+    const sentUnknownBal = await prisma.smsQueue.findUnique({ where: { id: pendingUnknownBal.id } });
+    assert.strictEqual(sentUnknownBal?.status, "sent", "Le statut final doit être 'sent'");
+    console.log("  ✓ Solde inconnu (null) : envoi autorisé et traité avec succès.");
+    await prisma.smsQueue.delete({ where: { id: pendingUnknownBal.id } });
+
+    // ------------------------------------------------------------------------
+    // TEST 8 : Solde 1470 avec seuil 500 -> Pas d'avertissement
+    // ------------------------------------------------------------------------
+    console.log("\n▶ TEST 8 : Solde 1470 avec seuil 500 -> Pas d'avertissement...");
+
+    const threshold500 = 500;
+    const balance1470 = 1470;
+    const isLowBal1470 = balance1470 !== null && balance1470 <= threshold500;
+    assert.strictEqual(isLowBal1470, false, "1470 > 500 ne doit pas déclencher d'alerte");
+    console.log("  ✓ Solde 1470 > seuil 500 : aucune alerte crédit bas.");
+
+    // ------------------------------------------------------------------------
+    // TEST 9 : Solde 300 avec seuil 500 -> Avertissement mais ENVOI AUTORISÉ
+    // ------------------------------------------------------------------------
+    console.log("\n▶ TEST 9 : Solde 300 avec seuil 500 -> Avertissement mais envoi autorisé...");
+
+    const balance300 = 300;
+    const isLowBal300 = balance300 !== null && balance300 <= threshold500;
+    assert.strictEqual(isLowBal300, true, "300 <= 500 doit déclencher l'avertissement visuel");
+
+    await prisma.smsServiceStatus.upsert({
+      where: { id: "singleton" },
+      update: { balance: 300, lastError: null },
+      create: { id: "singleton", balance: 300, lastError: null },
+    });
+
+    const pendingLowBal = await prisma.smsQueue.create({
+      data: {
+        parentPhone: "98123458",
+        message: "SMS avec solde bas mais autorisé",
+        type: "absence",
+        status: "pending",
+        retryCount: 0,
+        nextRetryAt: new Date(Date.now() - 1000),
+      },
+    });
+
+    const resLowBal = await processSmsQueueOnce();
+    assert.strictEqual(resLowBal.processed >= 1, true, "Le SMS doit être traité");
+    assert.strictEqual(resLowBal.sent >= 1, true, "Le SMS doit être envoyé malgré solde bas (WinSMS décide)");
+
+    const sentLowBal = await prisma.smsQueue.findUnique({ where: { id: pendingLowBal.id } });
+    assert.strictEqual(sentLowBal?.status, "sent", "Le statut final doit être 'sent'");
+    console.log("  ✓ Solde bas (300 <= 500) : avertissement actif mais envoi autorisé (jamais bloqué par le site).");
+    await prisma.smsQueue.delete({ where: { id: pendingLowBal.id } });
+
+    // ------------------------------------------------------------------------
+    // TEST 10 : WinSMS répond 102 -> Échec 'Clé API invalide' sans blocage interne
+    // ------------------------------------------------------------------------
+    console.log("\n▶ TEST 10 : WinSMS répond code 102 -> Échec explicite sans blocage interne...");
+
+    mockResponseStatus = 200;
+    mockResponseBody = JSON.stringify({ code: "102", message: "Authentication Failed" });
+
+    const winSmsProvider102 = new WinSmsProvider({
+      apiKey: "wrong_key",
+      apiUrl: mockApiUrl,
+      senderId: "Lyc.Emtiyez",
+    });
+
+    const sendRes102 = await winSmsProvider102.send("21698123456", "Test message", "Lyc.Emtiyez");
+    assert.strictEqual(sendRes102.success, false, "L'envoi doit échouer");
+    assert.ok(sendRes102.error?.includes("invalide"), "L'erreur doit indiquer clé invalide");
+    console.log("  ✓ Réponse 102 de WinSMS : échec 'Clé API invalide ou non activée' retourné fidèlement.");
+
+    // ------------------------------------------------------------------------
+    // TEST 11 : Clé stockée illisible (ENCRYPTION_KEY différente)
+    // ------------------------------------------------------------------------
+    console.log("\n▶ TEST 11 : Clé chiffrée illisible -> Détection et message clair...");
+
+    await prisma.setting.upsert({
+      where: { key: "winsms_api_key" },
+      update: { value: "corrupted:iv:cipher_unreadable_data" },
+      create: { key: "winsms_api_key", value: "corrupted:iv:cipher_unreadable_data" },
+    });
+
+    const configCorruptKey = await getEffectiveSmsConfig();
+    assert.strictEqual(configCorruptKey.isKeyUnreadable, true, "Doit détecter la clé illisible");
+    assert.strictEqual(configCorruptKey.maskedKey, "Clé illisible : ressaisissez-la");
+    console.log("  ✓ Clé corrompue/illisible : affichage 'Clé illisible : ressaisissez-la' et isKeyUnreadable=true.");
+
+    // Nettoyage clé de test
+    await prisma.setting.deleteMany({ where: { key: "winsms_api_key" } });
 
     console.log("\n==========================================================");
     console.log("✅ TOUS LES TESTS TYPESCRIPT ONT RÉUSSI AVEC SUCCÈS !");

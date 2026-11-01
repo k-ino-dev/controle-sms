@@ -166,7 +166,36 @@ export function getStartOfTodayInTunis(): Date {
 }
 
 /**
- * Rafraîchit le solde en arrière-plan (toutes les 10 minutes ou forcé)
+ * Migre les anciennes valeurs de solde "0" enregistrées par défaut ou suite à un échec vers null,
+ * sans toucher aux vrais soldes de 0 confirmés par une lecture explicite de WinSMS sans erreur.
+ */
+export async function migrateZeroBalanceToNull(): Promise<void> {
+  try {
+    const status = await prisma.smsServiceStatus.findUnique({
+      where: { id: "singleton" },
+    });
+    if (status && status.balance === 0) {
+      // Un solde de 0 est valide UNIQUEMENT si une réponse brute a confirmé {"balance":0} sans erreur
+      const isConfirmedZero =
+        Boolean(status.rawResponse) &&
+        (status.rawResponse!.includes('"balance":0') || status.rawResponse!.includes('"balance":"0"')) &&
+        !status.lastError;
+
+      if (!isConfirmedZero) {
+        await prisma.smsServiceStatus.update({
+          where: { id: "singleton" },
+          data: { balance: null },
+        });
+        console.log("[Migration] Ancien solde '0' non confirmé migré vers null (solde inconnu).");
+      }
+    }
+  } catch {
+    // Non bloquant
+  }
+}
+
+/**
+ * Rafraîchit le solde en arrière-plan (au démarrage, toutes les 10 minutes ou après chaque lot)
  */
 export async function refreshBalanceIfNeeded(provider: SmsProvider, force = false): Promise<void> {
   const TEN_MINUTES_MS = 10 * 60 * 1000;
@@ -175,9 +204,59 @@ export async function refreshBalanceIfNeeded(provider: SmsProvider, force = fals
     return;
   }
 
+  // Résolution de la configuration courante pour inspecter l'état de la clé
+  const { config } = await getEffectiveSmsProvider();
+
+  if (config.mode !== "winsms") {
+    return;
+  }
+
+  lastBalanceCheckTime = now;
+
+  // 1. Clé illisible (problème d'ENCRYPTION_KEY)
+  if (config.isKeyUnreadable) {
+    const reason = "Clé illisible : déchiffrement impossible avec ENCRYPTION_KEY (ressaisissez-la)";
+    console.log(`[SmsWorker] Consultation solde impossible : ${reason}`);
+    await prisma.smsServiceStatus.upsert({
+      where: { id: "singleton" },
+      update: {
+        lastCheckedAt: new Date(),
+        lastError: reason,
+        balance: null,
+      },
+      create: {
+        id: "singleton",
+        balance: null,
+        lastCheckedAt: new Date(),
+        lastError: reason,
+      },
+    });
+    return;
+  }
+
+  // 2. Clé absente
+  if (!config.apiKey || !config.apiKey.trim()) {
+    const reason = "Clé API WinSMS non configurée dans Paramètres";
+    console.log(`[SmsWorker] Consultation solde impossible : ${reason}`);
+    await prisma.smsServiceStatus.upsert({
+      where: { id: "singleton" },
+      update: {
+        lastCheckedAt: new Date(),
+        lastError: reason,
+        balance: null,
+      },
+      create: {
+        id: "singleton",
+        balance: null,
+        lastCheckedAt: new Date(),
+        lastError: reason,
+      },
+    });
+    return;
+  }
+
   try {
     const result = await provider.getBalance();
-    lastBalanceCheckTime = now;
 
     if (result.success && result.balance !== null) {
       await prisma.smsServiceStatus.upsert({
@@ -197,25 +276,49 @@ export async function refreshBalanceIfNeeded(provider: SmsProvider, force = fals
           rawResponse: result.raw ? sanitizeApiKeyInString(JSON.stringify(result.raw)) : undefined,
         },
       });
-    } else if (result.error) {
+      console.log(`[SmsWorker] Solde WinSMS actualisé : ${result.balance} SMS (licence : ${result.licenceDate || "N/A"})`);
+    } else {
+      const errorReason = result.error || "Réponse inattendue de WinSMS";
+      console.log(`[SmsWorker] Échec consultation solde : ${errorReason}`);
+
+      const currentStatus = await prisma.smsServiceStatus.findUnique({
+        where: { id: "singleton" },
+      });
+
       await prisma.smsServiceStatus.upsert({
         where: { id: "singleton" },
         update: {
           lastCheckedAt: new Date(),
-          lastError: result.error,
+          lastError: errorReason,
           rawResponse: result.raw ? sanitizeApiKeyInString(JSON.stringify(result.raw)) : undefined,
+          // Si le solde était 0 non confirmé, migrer vers null
+          ...(currentStatus?.balance === 0 ? { balance: null } : {}),
         },
         create: {
           id: "singleton",
           balance: null,
           lastCheckedAt: new Date(),
-          lastError: result.error,
+          lastError: errorReason,
           rawResponse: result.raw ? sanitizeApiKeyInString(JSON.stringify(result.raw)) : undefined,
         },
       });
     }
-  } catch (err) {
-    console.error("[SmsWorker] Erreur consultation solde :", err);
+  } catch (err: any) {
+    const reason = `Connexion impossible (erreur réseau : ${err.message || String(err)})`;
+    console.error(`[SmsWorker] Erreur consultation solde : ${sanitizeApiKeyInString(reason)}`);
+    await prisma.smsServiceStatus.upsert({
+      where: { id: "singleton" },
+      update: {
+        lastCheckedAt: new Date(),
+        lastError: reason,
+      },
+      create: {
+        id: "singleton",
+        balance: null,
+        lastCheckedAt: new Date(),
+        lastError: reason,
+      },
+    });
   }
 }
 
@@ -258,7 +361,7 @@ export async function processSmsQueueOnce(): Promise<{
     const dailyLimitSetting = await prisma.setting.findUnique({
       where: { key: "sms_daily_limit" },
     });
-    const dailyLimit = dailyLimitSetting ? parseInt(dailyLimitSetting.value, 10) : 500;
+    const dailyLimit = dailyLimitSetting ? parseInt(dailyLimitSetting.value, 10) : 150;
     const startOfTodayTunis = getStartOfTodayInTunis();
 
     const lowBalanceThresholdSetting = await prisma.setting.findUnique({
@@ -266,7 +369,7 @@ export async function processSmsQueueOnce(): Promise<{
     });
     const threshold = lowBalanceThresholdSetting
       ? parseInt(lowBalanceThresholdSetting.value, 10)
-      : 25;
+      : 500;
 
     const statusRecord = await prisma.smsServiceStatus.findUnique({
       where: { id: "singleton" },
@@ -366,24 +469,17 @@ export async function processSmsQueueOnce(): Promise<{
         continue;
       }
 
-      // D. Seuil de crédit bas (uniquement si solde réel connu et <= seuil)
+      // D. Seuil de crédit bas : AVERTISSEMENT SEULEMENT, JAMAIS DE BLOCAGE PAR LE SITE.
+      // Le seul vrai blocage est une réponse explicite de WinSMS refusant l'envoi.
       if (
         config.mode === "winsms" &&
-        statusRecord &&
-        statusRecord.balance !== null &&
+        statusRecord?.balance !== null &&
+        statusRecord?.balance !== undefined &&
         statusRecord.balance <= threshold
       ) {
-        const errorMsg = `Seuil de crédit bas atteint (${statusRecord.balance} SMS restant(s) <= seuil de ${threshold})`;
-        await prisma.smsQueue.update({
-          where: { id: msg.id },
-          data: {
-            status: "failed",
-            failReason: `Bloqué par le site : ${errorMsg}`,
-          },
-        });
-        console.log(`[SmsWorker] SMS #${msg.id} échec : ${errorMsg}`);
-        failed++;
-        continue;
+        console.log(
+          `[SmsWorker] Avertissement solde bas (${statusRecord.balance} SMS <= seuil ${threshold}), envoi maintenu vers WinSMS.`
+        );
       }
 
       // E. Anti-doublon strict (24h)
@@ -545,6 +641,11 @@ export async function processSmsQueueOnce(): Promise<{
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
+
+    // 5. Rafraîchissement direct du solde après chaque lot traité
+    if (processed > 0 && config.mode === "winsms") {
+      await refreshBalanceIfNeeded(provider, true);
+    }
   } catch (error: any) {
     console.error("[SmsWorker] Erreur cycle d'envoi :", error);
   } finally {
@@ -568,18 +669,17 @@ export function startSmsWorker(intervalMs = 5000): void {
   }
   globalThis.__smsWorkerStarted = true;
 
+  // 0. Migration préventive des anciens soldes 0 non confirmés vers null
+  migrateZeroBalanceToNull().catch(() => {});
+
   // 1. Récupération des SMS bloqués au boot
   recoverStuckSendingSms().catch((err) => {
     console.error("[SmsWorker] Erreur récupération SMS bloqués :", err);
   });
 
-  // 2. Première tentative de lecture du solde au boot
+  // 2. Consultation du solde dès le démarrage du worker (forcée)
   getEffectiveSmsProvider()
-    .then(({ provider, config }) => {
-      if (config.mode === "winsms" && config.apiKey) {
-        return refreshBalanceIfNeeded(provider, true);
-      }
-    })
+    .then(({ provider }) => refreshBalanceIfNeeded(provider, true))
     .catch(() => {});
 
   // 3. Exécution initiale de la file

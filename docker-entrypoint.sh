@@ -79,7 +79,11 @@ if [ "${ENABLE_EMBEDDED_WORKER:-true}" = "true" ] && [ -f "./scripts/worker.ts" 
   (
     while true; do
       echo "[Worker Supervisor] Démarrage du processus worker SMS..."
-      npx tsx scripts/worker.ts || true
+      if [ -f "./dist/worker.js" ]; then
+        node dist/worker.js || true
+      else
+        npx tsx scripts/worker.ts || true
+      fi
       echo "[Worker Supervisor] Processus worker SMS terminé. Redémarrage automatique dans 5 secondes..."
       sleep 5
     done

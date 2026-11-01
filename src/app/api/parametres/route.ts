@@ -98,20 +98,21 @@ export async function GET() {
         // La clé API brute n'est JAMAIS renvoyée au navigateur client.
         winsms_api_key: "", // Toujours vide côté client
         winsms_api_key_configured: smsConfig.isConfigured, // Booléen
-        winsms_api_key_masked: smsConfig.maskedKey, // ex: "***XXXX"
+        winsms_api_key_masked: smsConfig.maskedKey, // ex: "***XXXX" ou message d'erreur
+        winsms_api_key_unreadable: Boolean(smsConfig.isKeyUnreadable),
         winsms_sender_id: smsConfig.senderId,
         winsms_api_url: smsConfig.apiUrl,
         sms_provider_mode: smsConfig.mode, // "winsms" | "mock"
 
         sms_low_balance_threshold: settingsMap["sms_low_balance_threshold"]
           ? parseInt(settingsMap["sms_low_balance_threshold"], 10)
-          : 25,
+          : 500,
         sms_delay_between_sends: settingsMap["sms_delay_between_sends"]
           ? parseInt(settingsMap["sms_delay_between_sends"], 10)
           : 1000,
         sms_daily_limit: settingsMap["sms_daily_limit"]
           ? parseInt(settingsMap["sms_daily_limit"], 10)
-          : 500,
+          : 150,
         academic_year: settingsMap["academic_year"] || "2026-2027",
       },
     });

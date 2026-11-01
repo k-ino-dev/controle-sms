@@ -89,6 +89,10 @@ echo "=========================================================="
 # 5. Démarrage du worker SMS
 if [ $# -gt 0 ]; then
   exec "$@"
+elif [ -f "./dist/worker.js" ]; then
+  echo "⚡ Démarrage du worker compilé (node ./dist/worker.js)..."
+  exec node ./dist/worker.js
 else
+  echo "⚡ Démarrage du worker TypeScript (npx tsx scripts/worker.ts)..."
   exec npx tsx scripts/worker.ts
 fi

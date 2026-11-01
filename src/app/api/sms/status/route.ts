@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getEffectiveSmsProvider } from "@/lib/sms";
 import { sanitizeApiKeyInString } from "@/lib/crypto";
+import { migrateZeroBalanceToNull } from "@/lib/sms/worker";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
+  // Migration préventive des anciens soldes 0
+  await migrateZeroBalanceToNull();
+
   try {
     const { searchParams } = new URL(req.url);
     const forceRefresh = searchParams.get("refresh") === "true";
@@ -56,7 +60,7 @@ export async function GET(req: NextRequest) {
     });
     const lowBalanceThreshold = lowBalanceThresholdSetting
       ? parseInt(lowBalanceThresholdSetting.value, 10)
-      : 25;
+      : 500;
 
     // Si rafraîchissement demandé explicitement (ex: clic sur "Rafraîchir")
     if (forceRefresh && config.mode === "winsms" && config.apiKey) {
@@ -142,6 +146,13 @@ export async function GET(req: NextRequest) {
     let serviceState: "green" | "orange" | "red" = "green";
     let stateReason: string | null = null;
 
+    const balanceError =
+      config.isKeyUnreadable
+        ? "Clé illisible : ressaisissez-la"
+        : (!config.apiKey
+        ? "Clé API non configurée"
+        : (statusRecord?.lastError || "En attente de consultation"));
+
     if (lastRecentSms && (lastRecentSms.status === "failed" || lastRecentSms.status === "uncertain")) {
       // Le dernier envoi a échoué
       serviceState = "red";
@@ -157,7 +168,7 @@ export async function GET(req: NextRequest) {
       stateReason = `Pack WinSMS expirant bientôt (${daysUntilExpiry} jour${daysUntilExpiry && daysUntilExpiry > 1 ? "s" : ""} restant${daysUntilExpiry && daysUntilExpiry > 1 ? "s" : ""})`;
     } else if (balance === null && config.mode === "winsms") {
       serviceState = "orange";
-      stateReason = "Solde indisponible (en attente de lecture)";
+      stateReason = `Solde indisponible (${balanceError})`;
     }
 
     // Formatage français de la date de licence
@@ -178,10 +189,12 @@ export async function GET(req: NextRequest) {
       balance, // number | null
       balanceAvailable: balance !== null,
       balanceFormatted: balance !== null ? `${balance} SMS` : "Solde indisponible",
+      balanceError: balance === null ? balanceError : null,
       isLowBalance,
       lowBalanceThreshold,
       licenceDate,
       licenceDateFormatted: formattedLicenceDate,
+      licenceFormatted: formattedLicenceDate ? `Jusqu'au ${formattedLicenceDate}` : "Validité : indisponible",
       daysUntilExpiry,
       licenceExpiringSoon,
       lastCheckedAt: lastCheckedAt ? lastCheckedAt.toISOString() : null,
@@ -191,6 +204,7 @@ export async function GET(req: NextRequest) {
       failed24hCount,
       provider: config.mode, // "winsms" | "mock"
       isConfigured: config.isConfigured,
+      isKeyUnreadable: config.isKeyUnreadable,
       senderId: config.senderId,
     });
   } catch (error) {
@@ -205,6 +219,8 @@ export async function POST(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
+
+  await migrateZeroBalanceToNull();
 
   try {
     const { provider, config } = await getEffectiveSmsProvider();

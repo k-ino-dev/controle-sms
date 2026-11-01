@@ -11,6 +11,8 @@ export interface ResolvedSmsConfig {
   apiUrl: string;
   isConfigured: boolean;
   maskedKey: string;
+  isKeyUnreadable?: boolean;
+  keyError?: string;
 }
 
 /**
@@ -39,13 +41,27 @@ export async function getEffectiveSmsConfig(): Promise<ResolvedSmsConfig> {
 
   // 1. Clé API : Base (déchiffrée) > .env > ""
   let apiKey = "";
-  if (dbSettingsMap["winsms_api_key"] && dbSettingsMap["winsms_api_key"].trim()) {
-    const decrypted = decryptText(dbSettingsMap["winsms_api_key"].trim());
-    if (decrypted) {
-      apiKey = decrypted;
+  let isKeyUnreadable = false;
+  let keyError: string | undefined = undefined;
+
+  const rawDbKey = dbSettingsMap["winsms_api_key"]?.trim();
+  if (rawDbKey) {
+    if (rawDbKey.includes(":")) {
+      const decrypted = decryptText(rawDbKey);
+      if (decrypted) {
+        apiKey = decrypted;
+      } else {
+        isKeyUnreadable = true;
+        keyError = "Clé illisible : déchiffrement impossible avec ENCRYPTION_KEY (ressaisissez-la)";
+      }
+    } else {
+      // Clé stockée en clair (ex: tests ou environnement de développement)
+      apiKey = rawDbKey;
     }
   }
-  if (!apiKey && process.env.WINSMS_API_KEY && process.env.WINSMS_API_KEY.trim()) {
+
+  // Repli sur .env uniquement si aucune clé n'est stockée en base (ou si la clé en base est absente)
+  if (!apiKey && !rawDbKey && process.env.WINSMS_API_KEY && process.env.WINSMS_API_KEY.trim()) {
     apiKey = process.env.WINSMS_API_KEY.trim();
   }
 
@@ -77,7 +93,7 @@ export async function getEffectiveSmsConfig(): Promise<ResolvedSmsConfig> {
   }
 
   const isConfigured = Boolean(apiKey);
-  const maskedKey = maskApiKey(apiKey);
+  const maskedKey = isKeyUnreadable ? "Clé illisible : ressaisissez-la" : maskApiKey(apiKey);
 
   return {
     mode,
@@ -86,6 +102,8 @@ export async function getEffectiveSmsConfig(): Promise<ResolvedSmsConfig> {
     apiUrl,
     isConfigured,
     maskedKey,
+    isKeyUnreadable,
+    keyError,
   };
 }
 

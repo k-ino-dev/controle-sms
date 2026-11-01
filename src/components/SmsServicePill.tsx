@@ -33,7 +33,7 @@ export function SmsServicePill({ showDetails = false }: { showDetails?: boolean 
     balance: null,
     balanceFormatted: "Vérification...",
     isLowBalance: false,
-    lowBalanceThreshold: 25,
+    lowBalanceThreshold: 500,
     lastSendStatus: "success",
     lastError: null,
     provider: "winsms",

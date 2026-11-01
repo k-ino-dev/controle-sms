@@ -69,9 +69,9 @@ async function main() {
       key: "winsms_api_url",
       value: process.env.WINSMS_API_URL || "https://www.winsmspro.com/sms/sms/api",
     },
-    { key: "sms_low_balance_threshold", value: "25" },
+    { key: "sms_low_balance_threshold", value: "500" },
     { key: "sms_delay_between_sends", value: "1000" },
-    { key: "sms_daily_limit", value: "500" },
+    { key: "sms_daily_limit", value: "150" },
     { key: "academic_year", value: "2026-2027" },
   ];
 
@@ -83,6 +83,19 @@ async function main() {
       await prisma.setting.create({ data: s });
     }
   }
+
+  // Migration des anciens seuils trop bas (ex: 5 ou 25 -> 500)
+  const currentThreshold = await prisma.setting.findUnique({
+    where: { key: "sms_low_balance_threshold" },
+  });
+  if (currentThreshold && (currentThreshold.value === "5" || currentThreshold.value === "25")) {
+    await prisma.setting.update({
+      where: { key: "sms_low_balance_threshold" },
+      data: { value: "500" },
+    });
+    console.log("🔄 Migration : seuil d'alerte SMS mis à niveau de 25 à 500 SMS.");
+  }
+
   console.log("⚙️ Paramètres de l'établissement vérifiés et prêts.");
 
   // 3. Statut WinSMS Service (Singleton)
@@ -98,6 +111,20 @@ async function main() {
       },
     });
     console.log("📡 Statut WinSMS initialisé (en attente du solde réel).");
+  } else if (existingStatus.balance === 0) {
+    // Migration : les anciens soldes 0 non confirmés par une lecture explicite sont réinitialisés à null
+    const isConfirmedZero =
+      Boolean(existingStatus.rawResponse) &&
+      (existingStatus.rawResponse!.includes('"balance":0') || existingStatus.rawResponse!.includes('"balance":"0"')) &&
+      !existingStatus.lastError;
+
+    if (!isConfirmedZero) {
+      await prisma.smsServiceStatus.update({
+        where: { id: "singleton" },
+        data: { balance: null },
+      });
+      console.log("🔄 Migration : ancien solde '0' non confirmé migré vers null (solde inconnu).");
+    }
   }
 
   // 4. Données de démonstration : PAS en production sauf si SEED_DEMO_DATA=true

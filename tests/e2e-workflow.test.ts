@@ -11,6 +11,7 @@ async function runE2eProof() {
 
   let mockSendCalled = false;
   let mockBalanceCalled = false;
+  let currentBalance = 1471;
 
   // Serveur mock WinSMS
   const server = http.createServer((req, res) => {
@@ -19,11 +20,12 @@ async function runE2eProof() {
 
     if (url.includes("action=send-sms")) {
       mockSendCalled = true;
+      currentBalance = 1470;
       res.end(
         JSON.stringify({
           code: "ok",
           message: "Successfully Send",
-          balance: 1470,
+          balance: currentBalance,
           user: "elimtiaz",
           licence: "2027-04-27",
           reference: "5818999",
@@ -33,7 +35,7 @@ async function runE2eProof() {
       mockBalanceCalled = true;
       res.end(
         JSON.stringify({
-          balance: 1471,
+          balance: currentBalance,
           user: "elimtiaz",
           country: "Tunisia",
           licence: "2027-04-27",

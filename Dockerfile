@@ -46,6 +46,12 @@ COPY scripts ./scripts
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 COPY docker-worker-entrypoint.sh ./docker-worker-entrypoint.sh
 
+# 5. Copier le bundle compilé du worker, le code source, la configuration TypeScript et package.json
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/package.json ./package.json
+
 # Permissions d'exécution
 RUN chmod +x ./docker-entrypoint.sh ./docker-worker-entrypoint.sh ./scripts/*.sh
 
